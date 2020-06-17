@@ -1,4 +1,4 @@
-# Face and Gender recognition
+# Predict Age and Gender using Python
 This module will help you **determine the gender and age** of people from the image. The predict method **returns a list** of faces of people who were found in the image with a possible age and gender of the person.
 
 ![img](https://raw.githubusercontent.com/mowshon/age-and-gender/master/example/result.jpg)
