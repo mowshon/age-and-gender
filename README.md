@@ -1,6 +1,10 @@
 # Face and Gender recognition
 This module will help you **determine the gender and age** of people from the image. The predict method **returns a list** of faces of people who were found in the image with a possible age and gender of the person.
 
+![img](https://raw.githubusercontent.com/mowshon/age-and-gender/master/example/result.jpg)
+
+© [Bill Gates family](https://www.businessinsider.com/microsoft-bill-melinda-gates-drive-daughter-to-school-2019-4)
+
 # Instalation
 
 ```bash
@@ -76,3 +80,6 @@ Result:
   'face': [130, 164, 439, 474],
   'gender': {'confidence': 99.99955749511719, 'value': 'female'}}]
 ```
+
+### Example with Pillow
+Code: https://github.com/mowshon/age-and-gender/tree/master/example
