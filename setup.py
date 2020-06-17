@@ -69,7 +69,7 @@ setup(
     version='1.0.0',
     author='Mowshon',
     author_email='mowshon@yandex.ru',
-    description='Determining the gender and age of people from images.',
+    description='Predict Age and Gender of people from image.',
     long_description=long_description,
     long_description_content_type="text/markdown",
     ext_modules=[CMakeExtension('age_and_gender')],

@@ -10,3 +10,6 @@ compile_commands.json
 CTestTestfile.cmake
 _deps
 .idea
+build
+*.egg-info/
+dist/
