@@ -73,12 +73,21 @@ print(result)
 Result:
 
 ```
-[{'age': {'confidence': 46.103370666503906, 'value': 19},
-  'face': [423, 251, 681, 509],
-  'gender': {'confidence': 99.997314453125, 'value': 'female'}},
- {'age': {'confidence': 63.267696380615234, 'value': 5},
-  'face': [130, 164, 439, 474],
-  'gender': {'confidence': 99.99955749511719, 'value': 'female'}}]
+[{'age': {'confidence': 84.60948944091797, 'value': 26},
+  'face': [419, 266, 506, 352],
+  'gender': {'confidence': 100.0, 'value': 'female'}},
+ {'age': {'confidence': 46.72210693359375, 'value': 58},
+  'face': [780, 112, 883, 215],
+  'gender': {'confidence': 99.71077728271484, 'value': 'male'}},
+ {'age': {'confidence': 72.31566619873047, 'value': 19},
+  'face': [595, 135, 699, 238],
+  'gender': {'confidence': 98.93635559082031, 'value': 'male'}},
+ {'age': {'confidence': 53.86639404296875, 'value': 62},
+  'face': [227, 198, 314, 285],
+  'gender': {'confidence': 99.9999771118164, 'value': 'female'}},
+ {'age': {'confidence': 89.23471069335938, 'value': 25},
+  'face': [352, 544, 438, 630],
+  'gender': {'confidence': 100.0, 'value': 'female'}}]
 ```
 
 ### Example with Pillow
