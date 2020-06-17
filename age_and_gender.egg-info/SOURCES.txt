@@ -1,7 +1,0 @@
-README.md
-setup.py
-age_and_gender.egg-info/PKG-INFO
-age_and_gender.egg-info/SOURCES.txt
-age_and_gender.egg-info/dependency_links.txt
-age_and_gender.egg-info/not-zip-safe
-age_and_gender.egg-info/top_level.txt
