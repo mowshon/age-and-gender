@@ -88,8 +88,54 @@ Result:
   'gender': {'confidence': 99, 'value': 'male'}}]
 ```
 
-### Example with Pillow
+### Examples of determining the gender and age of people from the image
 Code: https://github.com/mowshon/age-and-gender/tree/master/example
+
+# How to increase efficiency with [face_recognition](https://github.com/ageitgey/face_recognition) ?
+
+The module will try to determine where the faces of people are on the image. But, it is better for us to provide a variable with people's faces using the library [face_recognition](https://github.com/ageitgey/face_recognition) and method `face_locations()`.
+
+```
+python -m pip install numpy --user
+python -m pip install face_recognition --user
+```
+
+Code:
+
+```python
+from age_and_gender import *
+from PIL import Image
+import face_recognition
+import numpy
+
+
+data = AgeAndGender()
+data.load_shape_predictor('models/shape_predictor_5_face_landmarks.dat')
+data.load_dnn_gender_classifier('models/dnn_gender_classifier_v1.dat')
+data.load_dnn_age_predictor('models/dnn_age_predictor_v1.dat')
+
+filename = 'test-image-2.jpg'
+
+img = Image.open(filename).convert("RGB")
+face_bounding_boxes = face_recognition.face_locations(
+    numpy.asarray(img),  # Convert to numpy array
+    model='hog'  # 'hog' for CPU | 'cnn' for GPU (NVIDIA with CUDA)
+)
+
+result = data.predict(img, face_bounding_boxes)
+```
+
+## Module `age-and-gender` without `face_recognition`
+
+![img](https://raw.githubusercontent.com/mowshon/age-and-gender/master/example/result-2-default.jpg)
+
+## Module `age-and-gender` with `face_recognition` and `face_bounding_boxes`
+
+![img](https://raw.githubusercontent.com/mowshon/age-and-gender/master/example/result-2.jpg)
+
+**Full example of code**: https://github.com/mowshon/age-and-gender/blob/master/example/example-with-face-recognition.py
+
+
 
 # Changelog
 
