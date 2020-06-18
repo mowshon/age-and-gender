@@ -76,6 +76,7 @@ setup(
     ext_modules=[CMakeExtension('age_and_gender')],
     cmdclass=dict(build_ext=CMakeBuild),
     license='MIT License',
+    install_requires=['Pillow==5.3.0'],
     classifiers=[
         'Intended Audience :: Science/Research',
         'Intended Audience :: Developers',
