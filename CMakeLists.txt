@@ -9,10 +9,10 @@ endif()
 
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
-include_directories("external/dlib")
-add_subdirectory(external/pybind11)
+include_directories("libs/dlib")
+add_subdirectory(libs/pybind11)
 
-pybind11_add_module(age_and_gender src/main.cpp external/dlib/dlib/all/source.cpp)
+pybind11_add_module(age_and_gender src/main.cpp libs/dlib/dlib/all/source.cpp)
 
 target_link_libraries(age_and_gender PRIVATE pthread)
 target_link_libraries(age_and_gender PRIVATE X11)
