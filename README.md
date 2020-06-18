@@ -12,13 +12,7 @@ This module will help you **determine the gender and age** of people from the im
 ```bash
 git clone git@github.com:mowshon/age-and-gender.git
 cd age-and-gender
-python3 setup.py install
-```
-
-Or
-
-```
-python3 -m pip install age-and-gender
+python3 setup.py install --user
 ```
 
 ## Download the pre-trained models

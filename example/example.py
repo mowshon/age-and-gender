@@ -2,9 +2,9 @@ from age_and_gender import *
 from PIL import Image, ImageDraw, ImageFont
 
 data = AgeAndGender()
-data.load_shape_predictor('shape_predictor_5_face_landmarks.dat')
-data.load_dnn_gender_classifier('dnn_gender_classifier_v1.dat')
-data.load_dnn_age_predictor('dnn_age_predictor_v1.dat')
+data.load_shape_predictor('models/shape_predictor_5_face_landmarks.dat')
+data.load_dnn_gender_classifier('models/dnn_gender_classifier_v1.dat')
+data.load_dnn_age_predictor('models/dnn_age_predictor_v1.dat')
 
 filename = 'test-image.jpg'
 
