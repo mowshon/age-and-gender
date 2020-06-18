@@ -9,7 +9,7 @@ data.load_dnn_age_predictor('models/dnn_age_predictor_v1.dat')
 filename = 'test-image.jpg'
 
 img = Image.open(filename).convert("RGB")
-result = data.predict(filename)
+result = data.predict(img)
 
 font = ImageFont.truetype("Acme-Regular.ttf", 20)
 

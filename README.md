@@ -56,12 +56,14 @@ test_example
 
 ```python
 from age_and_gender import AgeAndGender
+from PIL import Image
 
 data.load_shape_predictor('shape_predictor_5_face_landmarks.dat')
 data.load_dnn_gender_classifier('dnn_gender_classifier_v1.dat')
 data.load_dnn_age_predictor('dnn_age_predictor_v1.dat')
 
-result = data.predict("test-image.jpg")
+image = Image.open('test-image.jpg').convert("RGB")
+result = data.predict(image)
 
 print(result)
 ```
@@ -69,22 +71,32 @@ print(result)
 Result:
 
 ```
-[{'age': {'confidence': 84.60948944091797, 'value': 26},
-  'face': [419, 266, 506, 352],
-  'gender': {'confidence': 100.0, 'value': 'female'}},
- {'age': {'confidence': 46.72210693359375, 'value': 58},
-  'face': [780, 112, 883, 215],
-  'gender': {'confidence': 99.71077728271484, 'value': 'male'}},
- {'age': {'confidence': 72.31566619873047, 'value': 19},
-  'face': [595, 135, 699, 238],
-  'gender': {'confidence': 98.93635559082031, 'value': 'male'}},
- {'age': {'confidence': 53.86639404296875, 'value': 62},
-  'face': [227, 198, 314, 285],
-  'gender': {'confidence': 99.9999771118164, 'value': 'female'}},
- {'age': {'confidence': 89.23471069335938, 'value': 25},
-  'face': [352, 544, 438, 630],
-  'gender': {'confidence': 100.0, 'value': 'female'}}]
+[{'age': {'confidence': 85, 'value': 26},
+  'face': [414, 265, 504, 355],
+  'gender': {'confidence': 100, 'value': 'female'}},
+ {'age': {'confidence': 58, 'value': 62},
+  'face': [223, 199, 330, 307],
+  'gender': {'confidence': 99, 'value': 'female'}},
+ {'age': {'confidence': 73, 'value': 19},
+  'face': [593, 128, 700, 235],
+  'gender': {'confidence': 99, 'value': 'male'}},
+ {'age': {'confidence': 50, 'value': 24},
+  'face': [342, 534, 450, 641],
+  'gender': {'confidence': 100, 'value': 'female'}},
+ {'age': {'confidence': 92, 'value': 61},
+  'face': [782, 116, 872, 206],
+  'gender': {'confidence': 99, 'value': 'male'}}]
 ```
 
 ### Example with Pillow
 Code: https://github.com/mowshon/age-and-gender/tree/master/example
+
+# Changelog
+
+**Version 1.0.1**
+- The method `predict(pillow_img)` now require a PIL.Image object. Thanks to [@arrufat](https://github.com/arrufat) for the [piece of code](https://github.com/arrufat/wallyfinder/blob/2a3ddc1af2b676ad434574fecd9be0004c0fcc23/src/wallyfinder.cpp#L8-L42) that successfully performs the matrix conversion.
+- The method `predict(pillow_img, face_bounding_boxes)` takes another argument `face_bounding_boxes` with a list of faces in the image. Check out this example. 
+- If the method `predict(pillow_img)` does not get the second argument `face_bounding_boxes` with a list of faces, then the module will try to find the faces in the image itself.
+
+**Version 1.0.0**
+- Initial commit and code
