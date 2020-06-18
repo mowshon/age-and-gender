@@ -66,7 +66,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name='age_and_gender',
-    version='1.0.0',
+    version='1.0.1',
     author='Mowshon',
     url='https://python-scripts.com',
     author_email='mowshon@yandex.ru',

@@ -1,4 +1,6 @@
 #include <pybind11/pybind11.h>
+#include <pybind11/numpy.h>
+#include <math.h>
 
 #include "dlib/data_io.h"
 #include "dlib/string.h"
@@ -11,7 +13,7 @@
 namespace py = pybind11;
 using namespace dlib;
 
-const char* VERSION = "1.3";
+const char* VERSION = "1.0.1";
 
 // Age Predictor
 // ----------------------------------------------------------------------------------------
@@ -123,6 +125,25 @@ enum label_ : uint16_t
 
 // ----------------------------------
 
+// convert a numpy array into a dlib::matrix<dlib::rgb_pixel>
+const dlib::matrix<dlib::rgb_pixel> from_numpy(const py::array_t<unsigned char>& ndarray) {
+    const int num_channels = 3;
+    auto raw = ndarray.unchecked<num_channels>();
+    std::vector<unsigned char> rgb(3);
+    dlib::matrix<dlib::rgb_pixel> image(raw.shape(0), raw.shape(1));
+    for (ssize_t i = 0; i < raw.shape(0); i++)
+    {
+        for (ssize_t j = 0; j < raw.shape(1); j++)
+        {
+            image(i, j) = dlib::rgb_pixel(
+                static_cast<unsigned char>(raw(i, j, 0)),
+                static_cast<unsigned char>(raw(i, j, 1)),
+                static_cast<unsigned char>(raw(i, j, 2)));
+        }
+    }
+    return image;
+}
+
 class AgeAndGender {
 	
 	public:
@@ -130,7 +151,11 @@ class AgeAndGender {
 		virtual void load_shape_predictor(std::string filename);
 		virtual void load_dnn_gender_classifier(std::string filename);
 		virtual void load_dnn_age_predictor(std::string filename);
-		virtual py::list predict(std::string photo);
+		virtual py::list predict(
+			const py::array_t<unsigned char>& photo_numpy_array,
+			py::list face_bounding_boxes
+		);
+		virtual std::vector<dlib::rectangle> from_py_list_with_tuple_to_vector_with_rectangles(py::list face_bounding_boxes);
 	
 	private:
       shape_predictor sp;
@@ -152,10 +177,29 @@ void AgeAndGender::load_dnn_age_predictor(std::string filename) {
 	deserialize(filename) >> age_predictor_net;
 }
 
-py::list AgeAndGender::predict(std::string photo) {
+std::vector<dlib::rectangle> AgeAndGender::from_py_list_with_tuple_to_vector_with_rectangles(py::list face_bounding_boxes) {
+	std::vector<dlib::rectangle> result;
+	for (auto item : face_bounding_boxes) {
+		std::vector<int> face_box;
+		for(py::handle num : item) {
+			face_box.push_back(num.cast<int>());
+		}
+		
+		result.push_back(
+			rectangle(face_box[3], face_box[0], face_box[1], face_box[2])
+		);
+	}
+	
+	return result;
+}
+
+py::list AgeAndGender::predict(
+	const py::array_t<unsigned char>& photo_numpy_array,
+	py::list face_bounding_boxes = py::list()
+) {
 	// Load the source image.
-	matrix<rgb_pixel> in;
-	load_image(in, photo);
+	matrix<rgb_pixel> in = from_numpy(photo_numpy_array);
+	//load_image(in, photo);
 
 	// As proposed in the paper, use Softmax for the last layer.
 	softmax<agender_type::subnet_type> gender_snet;
@@ -170,7 +214,16 @@ py::list AgeAndGender::predict(std::string photo) {
 	enum label_ gender;
 	py::list result;
 	
-	for (auto face : detector(in)) {
+	std::vector<dlib::rectangle> all_faces;
+	if(face_bounding_boxes.size()) {
+		all_faces = AgeAndGender::from_py_list_with_tuple_to_vector_with_rectangles(
+			face_bounding_boxes
+		);
+	} else {
+		all_faces = detector(in);
+	}
+	
+	for (auto face : all_faces) {
 		auto shape = sp(in, face);
 		
 		if (shape.num_parts()) {
@@ -200,11 +253,11 @@ py::list AgeAndGender::predict(std::string photo) {
 			result.append(py::dict());
 			result[cur_face]["gender"] = py::dict();
 			result[cur_face]["gender"]["value"] = ((gender == female_label) ? "female" : "male");
-			result[cur_face]["gender"]["confidence"] = (confidence * 100.0f);
+			result[cur_face]["gender"]["confidence"] = (int)floorf(confidence * 100.0f);
 			
 			result[cur_face]["age"] = py::dict();
 			result[cur_face]["age"]["value"] = get_estimated_age(p_age, confidence);
-			result[cur_face]["age"]["confidence"] = (confidence * 100.0f);
+			result[cur_face]["age"]["confidence"] = (int)floorf(confidence * 100.0f);
 			result[cur_face]["face"] = face_rect;
 			cur_face++;
 		}
@@ -214,10 +267,17 @@ py::list AgeAndGender::predict(std::string photo) {
 }
 
 PYBIND11_MODULE(age_and_gender, m) {
+	m.doc() = "Predict Age and Gender using Python";
+	m.attr("__version__") = VERSION;
     py::class_<AgeAndGender>(m, "AgeAndGender")
         .def("load_shape_predictor", &AgeAndGender::load_shape_predictor)
         .def("load_dnn_gender_classifier", &AgeAndGender::load_dnn_gender_classifier)
         .def("load_dnn_age_predictor", &AgeAndGender::load_dnn_age_predictor)
-        .def("predict", &AgeAndGender::predict)
+        .def(
+			"predict",
+			&AgeAndGender::predict,
+			py::arg("photo_numpy_array"),
+			py::arg("face_bounding_boxes") = py::list()
+		)
         .def(py::init<>());
 }
