@@ -13,7 +13,9 @@ _deps
 build
 *.egg-info/
 dist/
-/spec
+__pycache__/
+*.py[cod]
 /models
 /venv/
 AGENTS.md
+/spec

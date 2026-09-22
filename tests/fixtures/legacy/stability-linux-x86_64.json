@@ -1,0 +1,688 @@
+{
+  "schema_version": 1,
+  "first_manifest": {
+    "schema_version": 1,
+    "repository": {
+      "revision": "24f78632775ba253c4019f9abab959df135b539d",
+      "dirty": true
+    },
+    "input": {
+      "source": "example/test-image.jpg",
+      "source_sha256": "0a3eb36690b3ae319939e534b6c4cd00def8045af8c12d62829d6d36ec7746f4",
+      "rgb_sha256": "a4a49f6bdf3b93b56cafd4421d19314cb8e8f76f184496a07a220f6020d4f8b9",
+      "size": [
+        1100,
+        825
+      ],
+      "decoder": "Pillow 12.3.0"
+    },
+    "models": {
+      "dnn_age_predictor_v1.dat": {
+        "sha256": "4b78d4d7055e22620e362884b5551caa9379080277338aa2d4cdfc592f0e9fa3",
+        "bytes": 10790013
+      },
+      "dnn_gender_classifier_v1.dat": {
+        "sha256": "85453d6f6585c8e02ada95929956783c780dc04dcec5bdfd14af82f15c99ba41",
+        "bytes": 530926
+      },
+      "shape_predictor_5_face_landmarks.dat": {
+        "sha256": "c4b1e9804792707d3a405c2c16a80a20269e6675021f64a41d30fffafbc41888",
+        "bytes": 9150489
+      }
+    },
+    "oracle": {
+      "source": "tools/legacy/oracle.cpp",
+      "build_recipe": "tools/legacy/CMakeLists.txt",
+      "source_sha256": "689ad796ed88ce0b732c7cba6de56ef38722adda5f1c62d7995ea7508ed01836",
+      "build_recipe_sha256": "49e1df5235a58445f132584d2e3b6225234987672ff303d487320fc19af029dc",
+      "root_cmake_sha256": "71e785ec7cf759b8ac8927030f5b6ea826735d082836b4ffba59bff296cde482",
+      "executable_sha256": "0f5e80e1060a1f0d7228a334a9ef83fa7de49533d1a34bea2558d6815e772adb",
+      "version_output": [
+        "age-and-gender legacy oracle 1",
+        "dlib 19.20.0",
+        "compiler 11.4.0",
+        "build_type Release",
+        "flags  -O3 -DNDEBUG -O2 -fno-fast-math"
+      ],
+      "command": [
+        "/home/pc/PycharmProjects/age-and-gender/build/legacy-oracle/age_and_gender_legacy_oracle",
+        "--image",
+        "/home/pc/PycharmProjects/age-and-gender/build/reference/test-image-v4/input.rgb",
+        "--width",
+        "1100",
+        "--height",
+        "825",
+        "--models",
+        "/home/pc/PycharmProjects/age-and-gender/example/models",
+        "--output",
+        "/home/pc/PycharmProjects/age-and-gender/build/reference/test-image-v4",
+        "--benchmark-runs",
+        "3"
+      ]
+    },
+    "machine": {
+      "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+      "machine": "x86_64",
+      "processor": "x86_64",
+      "python": "3.10.15",
+      "cpu_flags": [
+        "fpu",
+        "vme",
+        "de",
+        "pse",
+        "tsc",
+        "msr",
+        "pae",
+        "mce",
+        "cx8",
+        "apic",
+        "sep",
+        "mtrr",
+        "pge",
+        "mca",
+        "cmov",
+        "pat",
+        "pse36",
+        "clflush",
+        "mmx",
+        "fxsr",
+        "sse",
+        "sse2",
+        "ht",
+        "syscall",
+        "nx",
+        "mmxext",
+        "fxsr_opt",
+        "pdpe1gb",
+        "rdtscp",
+        "lm",
+        "constant_tsc",
+        "rep_good",
+        "nopl",
+        "nonstop_tsc",
+        "cpuid",
+        "extd_apicid",
+        "aperfmperf",
+        "rapl",
+        "pni",
+        "pclmulqdq",
+        "monitor",
+        "ssse3",
+        "fma",
+        "cx16",
+        "sse4_1",
+        "sse4_2",
+        "movbe",
+        "popcnt",
+        "aes",
+        "xsave",
+        "avx",
+        "f16c",
+        "rdrand",
+        "lahf_lm",
+        "cmp_legacy",
+        "svm",
+        "extapic",
+        "cr8_legacy",
+        "abm",
+        "sse4a",
+        "misalignsse",
+        "3dnowprefetch",
+        "osvw",
+        "ibs",
+        "skinit",
+        "wdt",
+        "tce",
+        "topoext",
+        "perfctr_core",
+        "perfctr_nb",
+        "bpext",
+        "perfctr_llc",
+        "mwaitx",
+        "cpb",
+        "cat_l3",
+        "cdp_l3",
+        "hw_pstate",
+        "ssbd",
+        "mba",
+        "ibpb",
+        "stibp",
+        "vmmcall",
+        "fsgsbase",
+        "bmi1",
+        "avx2",
+        "smep",
+        "bmi2",
+        "cqm",
+        "rdt_a",
+        "rdseed",
+        "adx",
+        "smap",
+        "clflushopt",
+        "clwb",
+        "sha_ni",
+        "xsaveopt",
+        "xsavec",
+        "xgetbv1",
+        "cqm_llc",
+        "cqm_occup_llc",
+        "cqm_mbm_total",
+        "cqm_mbm_local",
+        "clzero",
+        "irperf",
+        "xsaveerptr",
+        "rdpru",
+        "wbnoinvd",
+        "arat",
+        "npt",
+        "lbrv",
+        "svm_lock",
+        "nrip_save",
+        "tsc_scale",
+        "vmcb_clean",
+        "flushbyasid",
+        "decodeassists",
+        "pausefilter",
+        "pfthreshold",
+        "avic",
+        "v_vmsave_vmload",
+        "vgif",
+        "v_spec_ctrl",
+        "umip",
+        "rdpid",
+        "overflow_recov",
+        "succor",
+        "smca",
+        "sev",
+        "sev_es",
+        "ibpb_exit_to_user"
+      ],
+      "environment_threads": {
+        "OMP_NUM_THREADS": null,
+        "OPENBLAS_NUM_THREADS": null,
+        "MKL_NUM_THREADS": null
+      }
+    },
+    "artifacts": {
+      "face-0-age-chip.rgb": {
+        "bytes": 12288,
+        "sha256": "f68092c67171d88cc4d4fea60724cb183d861f9b3848ccbdaf107d465931ec73"
+      },
+      "face-0-age-input.f32": {
+        "bytes": 49152,
+        "sha256": "888b4e686d59d6be4b655e58228d1cd98dab663faa67f0f9dd7c74fdf5ee39df"
+      },
+      "face-0-gender-chip.rgb": {
+        "bytes": 3072,
+        "sha256": "ec17140cec0beb654d4e89c6dcb6d04be2bb4a0bc48e8c3c43d9d437a239f99d"
+      },
+      "face-0-gender-input.f32": {
+        "bytes": 12288,
+        "sha256": "6bb9d9cc35860b85dc038747f861263b9a07b7777079de5c4ddeafbeaa48ae27"
+      },
+      "face-1-age-chip.rgb": {
+        "bytes": 12288,
+        "sha256": "a9fb887b99a38880403071917e33b6a001f99d0bf0a3c3fb77718cf55fae9d62"
+      },
+      "face-1-age-input.f32": {
+        "bytes": 49152,
+        "sha256": "f22423e7150e4835f1f533e0d46ffd09ba0297ee577a194fd5182e176e778644"
+      },
+      "face-1-gender-chip.rgb": {
+        "bytes": 3072,
+        "sha256": "275488e501c8069f6fda4bb7c68f4b884ab5e34926433b4255257b172dd59bba"
+      },
+      "face-1-gender-input.f32": {
+        "bytes": 12288,
+        "sha256": "1b1069d01292bb4174ca8fb0784c60d56e625209920a37a5bd7cdb731fa147fa"
+      },
+      "face-2-age-chip.rgb": {
+        "bytes": 12288,
+        "sha256": "b6e42451357022b59e696f48a19f94fc9e055c1467484ff94f37daf74ed783fc"
+      },
+      "face-2-age-input.f32": {
+        "bytes": 49152,
+        "sha256": "d7038b9610eedace936c738c39b1ff7a54c299e7299051cf7838db39285611e3"
+      },
+      "face-2-gender-chip.rgb": {
+        "bytes": 3072,
+        "sha256": "609ca1fe2d208a2e8523e040ec27313c0154f7be8a521334a47a7794266bcfb9"
+      },
+      "face-2-gender-input.f32": {
+        "bytes": 12288,
+        "sha256": "9898a158e16a120643e697757fba7dc6dd927c9678510d5ccba0d1df72cd8831"
+      },
+      "face-3-age-chip.rgb": {
+        "bytes": 12288,
+        "sha256": "f955aa072b5ff9e9e37955f1bf6f1afc023c797d04b5bfae6b9e71165d2c87dc"
+      },
+      "face-3-age-input.f32": {
+        "bytes": 49152,
+        "sha256": "7ea49a0315d9eb3236816a48819d711c26fd322ade580239ba15a34d0cd31904"
+      },
+      "face-3-gender-chip.rgb": {
+        "bytes": 3072,
+        "sha256": "1c977bb6042951e6c288642ef8f787dd10e545112701923cd3043db756194e60"
+      },
+      "face-3-gender-input.f32": {
+        "bytes": 12288,
+        "sha256": "00b31f9b9a6394ddb486312d780c98c32ec5af62576305c817faf44a79985323"
+      },
+      "face-4-age-chip.rgb": {
+        "bytes": 12288,
+        "sha256": "da0491b5895c9fddf8d62680c05055ccc4d4e1490fb5370af7ae4ee1615a44e6"
+      },
+      "face-4-age-input.f32": {
+        "bytes": 49152,
+        "sha256": "72270cbc215e16d67b7ab7f3d88304f9341f89417950db6804d40360aad16793"
+      },
+      "face-4-gender-chip.rgb": {
+        "bytes": 3072,
+        "sha256": "e9999a87a21f082c8f7a0ca50bb3eeeb365feb89fd1d857215b21ba518f373d7"
+      },
+      "face-4-gender-input.f32": {
+        "bytes": 12288,
+        "sha256": "c7966811e17d2f3f8071432885338a07155c6bc1fc7f95a73a20efe7526f7546"
+      },
+      "input.rgb": {
+        "bytes": 2722500,
+        "sha256": "a4a49f6bdf3b93b56cafd4421d19314cb8e8f76f184496a07a220f6020d4f8b9"
+      },
+      "oracle-report.json": {
+        "bytes": 15916,
+        "sha256": "feb14ef458d34c5fe1c69004109214b17a0a047b0701e8f7aedbdce429c254ad"
+      }
+    }
+  },
+  "second_manifest": {
+    "schema_version": 1,
+    "repository": {
+      "revision": "24f78632775ba253c4019f9abab959df135b539d",
+      "dirty": true
+    },
+    "input": {
+      "source": "example/test-image.jpg",
+      "source_sha256": "0a3eb36690b3ae319939e534b6c4cd00def8045af8c12d62829d6d36ec7746f4",
+      "rgb_sha256": "a4a49f6bdf3b93b56cafd4421d19314cb8e8f76f184496a07a220f6020d4f8b9",
+      "size": [
+        1100,
+        825
+      ],
+      "decoder": "Pillow 12.3.0"
+    },
+    "models": {
+      "dnn_age_predictor_v1.dat": {
+        "sha256": "4b78d4d7055e22620e362884b5551caa9379080277338aa2d4cdfc592f0e9fa3",
+        "bytes": 10790013
+      },
+      "dnn_gender_classifier_v1.dat": {
+        "sha256": "85453d6f6585c8e02ada95929956783c780dc04dcec5bdfd14af82f15c99ba41",
+        "bytes": 530926
+      },
+      "shape_predictor_5_face_landmarks.dat": {
+        "sha256": "c4b1e9804792707d3a405c2c16a80a20269e6675021f64a41d30fffafbc41888",
+        "bytes": 9150489
+      }
+    },
+    "oracle": {
+      "source": "tools/legacy/oracle.cpp",
+      "build_recipe": "tools/legacy/CMakeLists.txt",
+      "source_sha256": "689ad796ed88ce0b732c7cba6de56ef38722adda5f1c62d7995ea7508ed01836",
+      "build_recipe_sha256": "49e1df5235a58445f132584d2e3b6225234987672ff303d487320fc19af029dc",
+      "root_cmake_sha256": "71e785ec7cf759b8ac8927030f5b6ea826735d082836b4ffba59bff296cde482",
+      "executable_sha256": "0f5e80e1060a1f0d7228a334a9ef83fa7de49533d1a34bea2558d6815e772adb",
+      "version_output": [
+        "age-and-gender legacy oracle 1",
+        "dlib 19.20.0",
+        "compiler 11.4.0",
+        "build_type Release",
+        "flags  -O3 -DNDEBUG -O2 -fno-fast-math"
+      ],
+      "command": [
+        "/home/pc/PycharmProjects/age-and-gender/build/legacy-oracle/age_and_gender_legacy_oracle",
+        "--image",
+        "/home/pc/PycharmProjects/age-and-gender/build/reference/test-image-v5/input.rgb",
+        "--width",
+        "1100",
+        "--height",
+        "825",
+        "--models",
+        "/home/pc/PycharmProjects/age-and-gender/example/models",
+        "--output",
+        "/home/pc/PycharmProjects/age-and-gender/build/reference/test-image-v5",
+        "--benchmark-runs",
+        "3"
+      ]
+    },
+    "machine": {
+      "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+      "machine": "x86_64",
+      "processor": "x86_64",
+      "python": "3.10.15",
+      "cpu_flags": [
+        "fpu",
+        "vme",
+        "de",
+        "pse",
+        "tsc",
+        "msr",
+        "pae",
+        "mce",
+        "cx8",
+        "apic",
+        "sep",
+        "mtrr",
+        "pge",
+        "mca",
+        "cmov",
+        "pat",
+        "pse36",
+        "clflush",
+        "mmx",
+        "fxsr",
+        "sse",
+        "sse2",
+        "ht",
+        "syscall",
+        "nx",
+        "mmxext",
+        "fxsr_opt",
+        "pdpe1gb",
+        "rdtscp",
+        "lm",
+        "constant_tsc",
+        "rep_good",
+        "nopl",
+        "nonstop_tsc",
+        "cpuid",
+        "extd_apicid",
+        "aperfmperf",
+        "rapl",
+        "pni",
+        "pclmulqdq",
+        "monitor",
+        "ssse3",
+        "fma",
+        "cx16",
+        "sse4_1",
+        "sse4_2",
+        "movbe",
+        "popcnt",
+        "aes",
+        "xsave",
+        "avx",
+        "f16c",
+        "rdrand",
+        "lahf_lm",
+        "cmp_legacy",
+        "svm",
+        "extapic",
+        "cr8_legacy",
+        "abm",
+        "sse4a",
+        "misalignsse",
+        "3dnowprefetch",
+        "osvw",
+        "ibs",
+        "skinit",
+        "wdt",
+        "tce",
+        "topoext",
+        "perfctr_core",
+        "perfctr_nb",
+        "bpext",
+        "perfctr_llc",
+        "mwaitx",
+        "cpb",
+        "cat_l3",
+        "cdp_l3",
+        "hw_pstate",
+        "ssbd",
+        "mba",
+        "ibpb",
+        "stibp",
+        "vmmcall",
+        "fsgsbase",
+        "bmi1",
+        "avx2",
+        "smep",
+        "bmi2",
+        "cqm",
+        "rdt_a",
+        "rdseed",
+        "adx",
+        "smap",
+        "clflushopt",
+        "clwb",
+        "sha_ni",
+        "xsaveopt",
+        "xsavec",
+        "xgetbv1",
+        "cqm_llc",
+        "cqm_occup_llc",
+        "cqm_mbm_total",
+        "cqm_mbm_local",
+        "clzero",
+        "irperf",
+        "xsaveerptr",
+        "rdpru",
+        "wbnoinvd",
+        "arat",
+        "npt",
+        "lbrv",
+        "svm_lock",
+        "nrip_save",
+        "tsc_scale",
+        "vmcb_clean",
+        "flushbyasid",
+        "decodeassists",
+        "pausefilter",
+        "pfthreshold",
+        "avic",
+        "v_vmsave_vmload",
+        "vgif",
+        "v_spec_ctrl",
+        "umip",
+        "rdpid",
+        "overflow_recov",
+        "succor",
+        "smca",
+        "sev",
+        "sev_es",
+        "ibpb_exit_to_user"
+      ],
+      "environment_threads": {
+        "OMP_NUM_THREADS": null,
+        "OPENBLAS_NUM_THREADS": null,
+        "MKL_NUM_THREADS": null
+      }
+    },
+    "artifacts": {
+      "face-0-age-chip.rgb": {
+        "bytes": 12288,
+        "sha256": "f68092c67171d88cc4d4fea60724cb183d861f9b3848ccbdaf107d465931ec73"
+      },
+      "face-0-age-input.f32": {
+        "bytes": 49152,
+        "sha256": "888b4e686d59d6be4b655e58228d1cd98dab663faa67f0f9dd7c74fdf5ee39df"
+      },
+      "face-0-gender-chip.rgb": {
+        "bytes": 3072,
+        "sha256": "ec17140cec0beb654d4e89c6dcb6d04be2bb4a0bc48e8c3c43d9d437a239f99d"
+      },
+      "face-0-gender-input.f32": {
+        "bytes": 12288,
+        "sha256": "6bb9d9cc35860b85dc038747f861263b9a07b7777079de5c4ddeafbeaa48ae27"
+      },
+      "face-1-age-chip.rgb": {
+        "bytes": 12288,
+        "sha256": "a9fb887b99a38880403071917e33b6a001f99d0bf0a3c3fb77718cf55fae9d62"
+      },
+      "face-1-age-input.f32": {
+        "bytes": 49152,
+        "sha256": "f22423e7150e4835f1f533e0d46ffd09ba0297ee577a194fd5182e176e778644"
+      },
+      "face-1-gender-chip.rgb": {
+        "bytes": 3072,
+        "sha256": "275488e501c8069f6fda4bb7c68f4b884ab5e34926433b4255257b172dd59bba"
+      },
+      "face-1-gender-input.f32": {
+        "bytes": 12288,
+        "sha256": "1b1069d01292bb4174ca8fb0784c60d56e625209920a37a5bd7cdb731fa147fa"
+      },
+      "face-2-age-chip.rgb": {
+        "bytes": 12288,
+        "sha256": "b6e42451357022b59e696f48a19f94fc9e055c1467484ff94f37daf74ed783fc"
+      },
+      "face-2-age-input.f32": {
+        "bytes": 49152,
+        "sha256": "d7038b9610eedace936c738c39b1ff7a54c299e7299051cf7838db39285611e3"
+      },
+      "face-2-gender-chip.rgb": {
+        "bytes": 3072,
+        "sha256": "609ca1fe2d208a2e8523e040ec27313c0154f7be8a521334a47a7794266bcfb9"
+      },
+      "face-2-gender-input.f32": {
+        "bytes": 12288,
+        "sha256": "9898a158e16a120643e697757fba7dc6dd927c9678510d5ccba0d1df72cd8831"
+      },
+      "face-3-age-chip.rgb": {
+        "bytes": 12288,
+        "sha256": "f955aa072b5ff9e9e37955f1bf6f1afc023c797d04b5bfae6b9e71165d2c87dc"
+      },
+      "face-3-age-input.f32": {
+        "bytes": 49152,
+        "sha256": "7ea49a0315d9eb3236816a48819d711c26fd322ade580239ba15a34d0cd31904"
+      },
+      "face-3-gender-chip.rgb": {
+        "bytes": 3072,
+        "sha256": "1c977bb6042951e6c288642ef8f787dd10e545112701923cd3043db756194e60"
+      },
+      "face-3-gender-input.f32": {
+        "bytes": 12288,
+        "sha256": "00b31f9b9a6394ddb486312d780c98c32ec5af62576305c817faf44a79985323"
+      },
+      "face-4-age-chip.rgb": {
+        "bytes": 12288,
+        "sha256": "da0491b5895c9fddf8d62680c05055ccc4d4e1490fb5370af7ae4ee1615a44e6"
+      },
+      "face-4-age-input.f32": {
+        "bytes": 49152,
+        "sha256": "72270cbc215e16d67b7ab7f3d88304f9341f89417950db6804d40360aad16793"
+      },
+      "face-4-gender-chip.rgb": {
+        "bytes": 3072,
+        "sha256": "e9999a87a21f082c8f7a0ca50bb3eeeb365feb89fd1d857215b21ba518f373d7"
+      },
+      "face-4-gender-input.f32": {
+        "bytes": 12288,
+        "sha256": "c7966811e17d2f3f8071432885338a07155c6bc1fc7f95a73a20efe7526f7546"
+      },
+      "input.rgb": {
+        "bytes": 2722500,
+        "sha256": "a4a49f6bdf3b93b56cafd4421d19314cb8e8f76f184496a07a220f6020d4f8b9"
+      },
+      "oracle-report.json": {
+        "bytes": 15914,
+        "sha256": "16640abf1692ee649c66d43dffb80755f75a94359efca690cb51642b1bbe357e"
+      }
+    }
+  },
+  "compared_report_fields": [
+    "models",
+    "input_boxes_trbl",
+    "faces",
+    "results"
+  ],
+  "mismatched_report_fields": [],
+  "artifact_hashes": {
+    "face-0-age-chip.rgb": {
+      "first": "f68092c67171d88cc4d4fea60724cb183d861f9b3848ccbdaf107d465931ec73",
+      "second": "f68092c67171d88cc4d4fea60724cb183d861f9b3848ccbdaf107d465931ec73"
+    },
+    "face-0-age-input.f32": {
+      "first": "888b4e686d59d6be4b655e58228d1cd98dab663faa67f0f9dd7c74fdf5ee39df",
+      "second": "888b4e686d59d6be4b655e58228d1cd98dab663faa67f0f9dd7c74fdf5ee39df"
+    },
+    "face-0-gender-chip.rgb": {
+      "first": "ec17140cec0beb654d4e89c6dcb6d04be2bb4a0bc48e8c3c43d9d437a239f99d",
+      "second": "ec17140cec0beb654d4e89c6dcb6d04be2bb4a0bc48e8c3c43d9d437a239f99d"
+    },
+    "face-0-gender-input.f32": {
+      "first": "6bb9d9cc35860b85dc038747f861263b9a07b7777079de5c4ddeafbeaa48ae27",
+      "second": "6bb9d9cc35860b85dc038747f861263b9a07b7777079de5c4ddeafbeaa48ae27"
+    },
+    "face-1-age-chip.rgb": {
+      "first": "a9fb887b99a38880403071917e33b6a001f99d0bf0a3c3fb77718cf55fae9d62",
+      "second": "a9fb887b99a38880403071917e33b6a001f99d0bf0a3c3fb77718cf55fae9d62"
+    },
+    "face-1-age-input.f32": {
+      "first": "f22423e7150e4835f1f533e0d46ffd09ba0297ee577a194fd5182e176e778644",
+      "second": "f22423e7150e4835f1f533e0d46ffd09ba0297ee577a194fd5182e176e778644"
+    },
+    "face-1-gender-chip.rgb": {
+      "first": "275488e501c8069f6fda4bb7c68f4b884ab5e34926433b4255257b172dd59bba",
+      "second": "275488e501c8069f6fda4bb7c68f4b884ab5e34926433b4255257b172dd59bba"
+    },
+    "face-1-gender-input.f32": {
+      "first": "1b1069d01292bb4174ca8fb0784c60d56e625209920a37a5bd7cdb731fa147fa",
+      "second": "1b1069d01292bb4174ca8fb0784c60d56e625209920a37a5bd7cdb731fa147fa"
+    },
+    "face-2-age-chip.rgb": {
+      "first": "b6e42451357022b59e696f48a19f94fc9e055c1467484ff94f37daf74ed783fc",
+      "second": "b6e42451357022b59e696f48a19f94fc9e055c1467484ff94f37daf74ed783fc"
+    },
+    "face-2-age-input.f32": {
+      "first": "d7038b9610eedace936c738c39b1ff7a54c299e7299051cf7838db39285611e3",
+      "second": "d7038b9610eedace936c738c39b1ff7a54c299e7299051cf7838db39285611e3"
+    },
+    "face-2-gender-chip.rgb": {
+      "first": "609ca1fe2d208a2e8523e040ec27313c0154f7be8a521334a47a7794266bcfb9",
+      "second": "609ca1fe2d208a2e8523e040ec27313c0154f7be8a521334a47a7794266bcfb9"
+    },
+    "face-2-gender-input.f32": {
+      "first": "9898a158e16a120643e697757fba7dc6dd927c9678510d5ccba0d1df72cd8831",
+      "second": "9898a158e16a120643e697757fba7dc6dd927c9678510d5ccba0d1df72cd8831"
+    },
+    "face-3-age-chip.rgb": {
+      "first": "f955aa072b5ff9e9e37955f1bf6f1afc023c797d04b5bfae6b9e71165d2c87dc",
+      "second": "f955aa072b5ff9e9e37955f1bf6f1afc023c797d04b5bfae6b9e71165d2c87dc"
+    },
+    "face-3-age-input.f32": {
+      "first": "7ea49a0315d9eb3236816a48819d711c26fd322ade580239ba15a34d0cd31904",
+      "second": "7ea49a0315d9eb3236816a48819d711c26fd322ade580239ba15a34d0cd31904"
+    },
+    "face-3-gender-chip.rgb": {
+      "first": "1c977bb6042951e6c288642ef8f787dd10e545112701923cd3043db756194e60",
+      "second": "1c977bb6042951e6c288642ef8f787dd10e545112701923cd3043db756194e60"
+    },
+    "face-3-gender-input.f32": {
+      "first": "00b31f9b9a6394ddb486312d780c98c32ec5af62576305c817faf44a79985323",
+      "second": "00b31f9b9a6394ddb486312d780c98c32ec5af62576305c817faf44a79985323"
+    },
+    "face-4-age-chip.rgb": {
+      "first": "da0491b5895c9fddf8d62680c05055ccc4d4e1490fb5370af7ae4ee1615a44e6",
+      "second": "da0491b5895c9fddf8d62680c05055ccc4d4e1490fb5370af7ae4ee1615a44e6"
+    },
+    "face-4-age-input.f32": {
+      "first": "72270cbc215e16d67b7ab7f3d88304f9341f89417950db6804d40360aad16793",
+      "second": "72270cbc215e16d67b7ab7f3d88304f9341f89417950db6804d40360aad16793"
+    },
+    "face-4-gender-chip.rgb": {
+      "first": "e9999a87a21f082c8f7a0ca50bb3eeeb365feb89fd1d857215b21ba518f373d7",
+      "second": "e9999a87a21f082c8f7a0ca50bb3eeeb365feb89fd1d857215b21ba518f373d7"
+    },
+    "face-4-gender-input.f32": {
+      "first": "c7966811e17d2f3f8071432885338a07155c6bc1fc7f95a73a20efe7526f7546",
+      "second": "c7966811e17d2f3f8071432885338a07155c6bc1fc7f95a73a20efe7526f7546"
+    },
+    "input.rgb": {
+      "first": "a4a49f6bdf3b93b56cafd4421d19314cb8e8f76f184496a07a220f6020d4f8b9",
+      "second": "a4a49f6bdf3b93b56cafd4421d19314cb8e8f76f184496a07a220f6020d4f8b9"
+    }
+  },
+  "first_only_artifacts": [],
+  "second_only_artifacts": [],
+  "mismatched_artifacts": [],
+  "stable": true
+}

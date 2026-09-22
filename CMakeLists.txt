@@ -9,6 +9,8 @@ endif()
 
 set(CMAKE_VERBOSE_MAKEFILE OFF)
 
+option(AGE_GENDER_IMAGE_IO "Build unused dlib JPEG/PNG loaders" ON)
+
 include_directories("libs/dlib")
 add_subdirectory(libs/pybind11)
 
@@ -16,7 +18,9 @@ pybind11_add_module(age_and_gender src/main.cpp libs/dlib/dlib/all/source.cpp)
 
 target_link_libraries(age_and_gender PRIVATE pthread)
 target_link_libraries(age_and_gender PRIVATE X11)
-target_link_libraries(age_and_gender PRIVATE jpeg)
-target_link_libraries(age_and_gender PRIVATE png)
 
-add_definitions(-DDLIB_JPEG_SUPPORT -DDLIB_PNG_SUPPORT)
+if(AGE_GENDER_IMAGE_IO)
+  target_link_libraries(age_and_gender PRIVATE jpeg)
+  target_link_libraries(age_and_gender PRIVATE png)
+  add_definitions(-DDLIB_JPEG_SUPPORT -DDLIB_PNG_SUPPORT)
+endif()
