@@ -24,6 +24,12 @@ build/legacy-oracle/age_and_gender_legacy_oracle --version
 The target directly compiles the repository's vendored dlib. It does not use the
 system dlib package and does not add a dependency to `setup.py`.
 
+The network aliases live in `tools/network_definitions.h`, shared with the
+conversion exporter in `tools/conversion/` so the oracle and the converter can
+never deserialize through divergent copies of the architecture. The frozen
+goldens record that header's SHA-256 alongside `oracle.cpp`, so a change to
+either one is visible in every reference manifest.
+
 ## Generate a reference
 
 The historical lane is CPython 3.10 with the exact packages in
@@ -82,6 +88,14 @@ venv/bin/python tools/legacy/compare_references.py \
 
 Pass `--box top,right,bottom,left` repeatedly for explicit rectangles. Omitting
 all boxes exercises auto-detection; this is also the legacy empty-list behavior.
+
+Use the `--box=...` form for rectangles with negative coordinates, otherwise
+`argparse` reads the leading minus sign as another option. The frozen
+out-of-frame case is generated with:
+
+```bash
+--box=69,525,141,453 --box=29,189,101,117 --box=69,525,141,453 --box=-20,100,100,-20
+```
 
 ## Check the original extension
 

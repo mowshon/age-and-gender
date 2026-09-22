@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "repository_revision": "24f78632775ba253c4019f9abab959df135b539d",
+  "repository_revision": "4740a7af8358c5092e47b1ed58986adbac1f15e2",
   "input": {
     "source": "libs/dlib/examples/faces/dogs.jpg",
     "source_sha256": "66e22f8c3bd3b8f876ad9158caaa064992d2b56a5681d9c6efa163a59db7ed03",
@@ -27,8 +27,10 @@
   },
   "oracle": {
     "source": "tools/legacy/oracle.cpp",
+    "network_definitions": "tools/network_definitions.h",
     "build_recipe": "tools/legacy/CMakeLists.txt",
-    "source_sha256": "689ad796ed88ce0b732c7cba6de56ef38722adda5f1c62d7995ea7508ed01836",
+    "source_sha256": "e4b47988b3abff7428cea43f9a6ccd59a1b4f83599cf913c5cbe064896ef0d1e",
+    "network_definitions_sha256": "b945e290c7081fea1a2993e4d88ddb5f170cdc97967c336762886d1f87f2b73e",
     "build_recipe_sha256": "49e1df5235a58445f132584d2e3b6225234987672ff303d487320fc19af029dc",
     "root_cmake_sha256": "71e785ec7cf759b8ac8927030f5b6ea826735d082836b4ffba59bff296cde482",
     "executable_sha256": "0f5e80e1060a1f0d7228a334a9ef83fa7de49533d1a34bea2558d6815e772adb",

@@ -70,8 +70,10 @@ def main() -> None:
             key: manifest["oracle"][key]
             for key in (
                 "source",
+                "network_definitions",
                 "build_recipe",
                 "source_sha256",
+                "network_definitions_sha256",
                 "build_recipe_sha256",
                 "root_cmake_sha256",
                 "executable_sha256",

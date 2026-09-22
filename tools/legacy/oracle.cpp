@@ -3,6 +3,8 @@
 #include <dlib/image_processing.h>
 #include <dlib/image_transforms.h>
 
+#include "../network_definitions.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -33,76 +35,10 @@ using namespace dlib;
 
 namespace {
 
-const unsigned long number_of_age_classes = 81;
-
-// Keep these aliases structurally identical to src/main.cpp. They are the oracle.
-template <int num_filters, template <typename> class BN, int stride, typename SUBNET>
-using basicblock = BN<con<num_filters, 3, 3, 1, 1,
-    relu<BN<con<num_filters, 3, 3, stride, stride, SUBNET>>>>>;
-
-template <
-    template <int, template <typename> class, int, typename> class BLOCK,
-    int num_filters,
-    template <typename> class BN,
-    typename SUBNET>
-using residual = add_prev1<BLOCK<num_filters, BN, 1, tag1<SUBNET>>>;
-
-template <
-    template <int, template <typename> class, int, typename> class BLOCK,
-    int num_filters,
-    template <typename> class BN,
-    typename SUBNET>
-using residual_down = add_prev2<avg_pool<2, 2, 2, 2,
-    skip1<tag2<BLOCK<num_filters, BN, 2, tag1<SUBNET>>>>>>;
-
-template <
-    template <template <int, template <typename> class, int, typename> class,
-              int, template <typename> class, typename> class RESIDUAL,
-    template <int, template <typename> class, int, typename> class BLOCK,
-    int num_filters,
-    template <typename> class BN,
-    typename SUBNET>
-using residual_block = relu<RESIDUAL<BLOCK, num_filters, BN, SUBNET>>;
-
-template <int num_filters, typename SUBNET>
-using aresbasicblock_down =
-    residual_block<residual_down, basicblock, num_filters, affine, SUBNET>;
-template <typename SUBNET>
-using aresbasicblock256 =
-    residual_block<residual, basicblock, 256, affine, SUBNET>;
-template <typename SUBNET>
-using aresbasicblock128 =
-    residual_block<residual, basicblock, 128, affine, SUBNET>;
-template <typename SUBNET>
-using aresbasicblock64 =
-    residual_block<residual, basicblock, 64, affine, SUBNET>;
-
-template <typename INPUT>
-using aresnet_input = max_pool<3, 3, 2, 2,
-    relu<affine<con<64, 7, 7, 2, 2, INPUT>>>>;
-template <typename SUBNET>
-using aresnet10_level1 = aresbasicblock256<aresbasicblock_down<256, SUBNET>>;
-template <typename SUBNET>
-using aresnet10_level2 = aresbasicblock128<aresbasicblock_down<128, SUBNET>>;
-template <typename SUBNET>
-using aresnet10_level3 = aresbasicblock64<SUBNET>;
-template <typename INPUT>
-using aresnet10_backbone = avg_pool_everything<aresnet10_level1<
-    aresnet10_level2<aresnet10_level3<aresnet_input<INPUT>>>>>;
-using apredictor_t = loss_multiclass_log<
-    fc<number_of_age_classes, aresnet10_backbone<input_rgb_image>>>;
-
-template <int N, template <typename> class BN, int stride, typename SUBNET>
-using block = BN<con<N, 3, 3, stride, stride,
-    relu<BN<con<N, 3, 3, stride, stride, SUBNET>>>>>;
-template <int N, typename SUBNET>
-using ares_ = relu<block<N, affine, 1, SUBNET>>;
-template <typename SUBNET>
-using alevel1 = avg_pool<2, 2, 2, 2, ares_<64, SUBNET>>;
-template <typename SUBNET>
-using alevel2 = avg_pool<2, 2, 2, 2, ares_<32, SUBNET>>;
-using agender_type = loss_multiclass_log<fc<2, multiply<relu<fc<16,
-    multiply<alevel1<alevel2<input_rgb_image_sized<32>>>>>>>>>;
+using apredictor_t = age_gender_models::age_network;
+using agender_type = age_gender_models::gender_network;
+constexpr unsigned long number_of_age_classes =
+    age_gender_models::number_of_age_classes;
 
 using Clock = std::chrono::steady_clock;
 
