@@ -17,5 +17,3 @@ __pycache__/
 *.py[cod]
 /models
 /venv/
-AGENTS.md
-/spec

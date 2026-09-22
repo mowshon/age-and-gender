@@ -3,7 +3,7 @@
   "first_manifest": {
     "schema_version": 1,
     "repository": {
-      "revision": "24f78632775ba253c4019f9abab959df135b539d",
+      "revision": "4740a7af8358c5092e47b1ed58986adbac1f15e2",
       "dirty": true
     },
     "input": {
@@ -32,8 +32,10 @@
     },
     "oracle": {
       "source": "tools/legacy/oracle.cpp",
+      "network_definitions": "tools/network_definitions.h",
       "build_recipe": "tools/legacy/CMakeLists.txt",
-      "source_sha256": "689ad796ed88ce0b732c7cba6de56ef38722adda5f1c62d7995ea7508ed01836",
+      "source_sha256": "e4b47988b3abff7428cea43f9a6ccd59a1b4f83599cf913c5cbe064896ef0d1e",
+      "network_definitions_sha256": "b945e290c7081fea1a2993e4d88ddb5f170cdc97967c336762886d1f87f2b73e",
       "build_recipe_sha256": "49e1df5235a58445f132584d2e3b6225234987672ff303d487320fc19af029dc",
       "root_cmake_sha256": "71e785ec7cf759b8ac8927030f5b6ea826735d082836b4ffba59bff296cde482",
       "executable_sha256": "0f5e80e1060a1f0d7228a334a9ef83fa7de49533d1a34bea2558d6815e772adb",
@@ -45,9 +47,9 @@
         "flags  -O3 -DNDEBUG -O2 -fno-fast-math"
       ],
       "command": [
-        "/home/pc/PycharmProjects/age-and-gender/build/legacy-oracle/age_and_gender_legacy_oracle",
+        "/home/pc/PycharmProjects/age-and-gender/build/legacy-oracle-pr2/age_and_gender_legacy_oracle",
         "--image",
-        "/home/pc/PycharmProjects/age-and-gender/build/reference/test-image-v4/input.rgb",
+        "/home/pc/PycharmProjects/age-and-gender/build/reference/refreeze/test-image/input.rgb",
         "--width",
         "1100",
         "--height",
@@ -55,7 +57,7 @@
         "--models",
         "/home/pc/PycharmProjects/age-and-gender/example/models",
         "--output",
-        "/home/pc/PycharmProjects/age-and-gender/build/reference/test-image-v4",
+        "/home/pc/PycharmProjects/age-and-gender/build/reference/refreeze/test-image",
         "--benchmark-runs",
         "3"
       ]
@@ -289,15 +291,15 @@
         "sha256": "a4a49f6bdf3b93b56cafd4421d19314cb8e8f76f184496a07a220f6020d4f8b9"
       },
       "oracle-report.json": {
-        "bytes": 15916,
-        "sha256": "feb14ef458d34c5fe1c69004109214b17a0a047b0701e8f7aedbdce429c254ad"
+        "bytes": 15920,
+        "sha256": "5ce4d47c141a7ec128447e326823a067842968e0941abf5fb9ef81c347555d8e"
       }
     }
   },
   "second_manifest": {
     "schema_version": 1,
     "repository": {
-      "revision": "24f78632775ba253c4019f9abab959df135b539d",
+      "revision": "4740a7af8358c5092e47b1ed58986adbac1f15e2",
       "dirty": true
     },
     "input": {
@@ -326,8 +328,10 @@
     },
     "oracle": {
       "source": "tools/legacy/oracle.cpp",
+      "network_definitions": "tools/network_definitions.h",
       "build_recipe": "tools/legacy/CMakeLists.txt",
-      "source_sha256": "689ad796ed88ce0b732c7cba6de56ef38722adda5f1c62d7995ea7508ed01836",
+      "source_sha256": "e4b47988b3abff7428cea43f9a6ccd59a1b4f83599cf913c5cbe064896ef0d1e",
+      "network_definitions_sha256": "b945e290c7081fea1a2993e4d88ddb5f170cdc97967c336762886d1f87f2b73e",
       "build_recipe_sha256": "49e1df5235a58445f132584d2e3b6225234987672ff303d487320fc19af029dc",
       "root_cmake_sha256": "71e785ec7cf759b8ac8927030f5b6ea826735d082836b4ffba59bff296cde482",
       "executable_sha256": "0f5e80e1060a1f0d7228a334a9ef83fa7de49533d1a34bea2558d6815e772adb",
@@ -339,9 +343,9 @@
         "flags  -O3 -DNDEBUG -O2 -fno-fast-math"
       ],
       "command": [
-        "/home/pc/PycharmProjects/age-and-gender/build/legacy-oracle/age_and_gender_legacy_oracle",
+        "/home/pc/PycharmProjects/age-and-gender/build/legacy-oracle-pr2/age_and_gender_legacy_oracle",
         "--image",
-        "/home/pc/PycharmProjects/age-and-gender/build/reference/test-image-v5/input.rgb",
+        "/home/pc/PycharmProjects/age-and-gender/build/reference/refreeze/test-image-repeat/input.rgb",
         "--width",
         "1100",
         "--height",
@@ -349,7 +353,7 @@
         "--models",
         "/home/pc/PycharmProjects/age-and-gender/example/models",
         "--output",
-        "/home/pc/PycharmProjects/age-and-gender/build/reference/test-image-v5",
+        "/home/pc/PycharmProjects/age-and-gender/build/reference/refreeze/test-image-repeat",
         "--benchmark-runs",
         "3"
       ]
@@ -583,8 +587,8 @@
         "sha256": "a4a49f6bdf3b93b56cafd4421d19314cb8e8f76f184496a07a220f6020d4f8b9"
       },
       "oracle-report.json": {
-        "bytes": 15914,
-        "sha256": "16640abf1692ee649c66d43dffb80755f75a94359efca690cb51642b1bbe357e"
+        "bytes": 15929,
+        "sha256": "f305c2021d7ea7f2a417c64b796e0b041b23f42fe81a6a99d5a2ca33bcb683b1"
       }
     }
   },

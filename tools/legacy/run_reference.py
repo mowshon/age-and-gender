@@ -167,8 +167,12 @@ def main() -> None:
         },
         "oracle": {
             "source": "tools/legacy/oracle.cpp",
+            "network_definitions": "tools/network_definitions.h",
             "build_recipe": "tools/legacy/CMakeLists.txt",
             "source_sha256": sha256_file(root / "tools/legacy/oracle.cpp"),
+            "network_definitions_sha256": sha256_file(
+                root / "tools/network_definitions.h"
+            ),
             "build_recipe_sha256": sha256_file(root / "tools/legacy/CMakeLists.txt"),
             "root_cmake_sha256": sha256_file(root / "CMakeLists.txt"),
             "executable_sha256": sha256_file(args.oracle),
