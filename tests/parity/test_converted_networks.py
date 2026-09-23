@@ -14,15 +14,14 @@ BUNDLE = ROOT / "tools/conversion/artifacts/v1"
 # user-facing dependencies are installed.
 try:
     import onnx
-    import onnxruntime as ort
-
+    import onnxruntime as ort  # noqa: F401 - availability is part of the guard
     from tools.conversion.validate_conversion import (
         ACTIVATION_TOLERANCE,
         MODELS,
-        Comparison,
         OPTIMIZATION_LEVELS,
         SELECTED_SETTING,
         THREAD_SETTINGS,
+        Comparison,
         add_debug_outputs,
         fixture_cases,
         fixture_chips,

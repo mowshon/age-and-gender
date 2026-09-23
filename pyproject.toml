@@ -1,0 +1,101 @@
+[build-system]
+requires = ["hatchling>=1.32"]
+build-backend = "hatchling.build"
+
+[project]
+name = "age-and-gender"
+description = "Age and gender estimation from face images, with no compiler required."
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Mowshon" }]
+keywords = ["age", "gender", "face", "dlib", "onnx"]
+dynamic = ["version"]
+
+# The published README still documents the 1.x CMake extension, so it is
+# deliberately not wired in as the long description until the release PR
+# rewrites it for the Python package.
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Typing :: Typed",
+]
+
+# Resolved and parity-checked on CPython 3.13.15; see spec/PR-3.md. The face
+# frontend adds its own dependency when it lands, and onnx, Torch, Caffe and
+# face_recognition stay out of the runtime entirely.
+dependencies = [
+    "numpy>=2.3.3,<3",
+    "onnxruntime>=1.23.0,<1.31",
+]
+
+[project.urls]
+Homepage = "https://github.com/mowshon/age-and-gender"
+Source = "https://github.com/mowshon/age-and-gender"
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.2",
+    "pytest>=8.4",
+    "ruff>=0.16",
+]
+
+[tool.hatch.version]
+path = "src/age_and_gender/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+# Only the Python package is selected. The 1.x setup.py and CMake sources stay
+# in the tree as historical source but take no part in this build, and must not
+# install an extension module beside the package.
+packages = ["src/age_and_gender"]
+
+[tool.hatch.build.targets.sdist]
+only-include = [
+    "src/age_and_gender",
+    "tests",
+    "pyproject.toml",
+    "LICENSE",
+    "README.md",
+]
+
+[tool.pytest.ini_options]
+# Vendored upstream sources under libs/ carry their own test suites; testpaths
+# keeps collection inside this project's tests.
+testpaths = ["tests"]
+pythonpath = [".", "src"]
+norecursedirs = ["libs", "build", "venv", "*.egg-info"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests", "tools"]
+# The 1.x CMake packaging and the 1.x examples are historical source that the
+# API and release work replaces; they are not held to the new project style.
+extend-exclude = ["libs", "build", "venv", "setup.py", "example"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF", "D"]
+ignore = [
+    "D203",  # incompatible with D211
+    "D213",  # incompatible with D212
+    # The stage comparison helpers deliberately walk pairs whose lengths they
+    # have already validated and report mismatches themselves, so a strict zip
+    # would replace a described failure with a bare exception.
+    "B905",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Docstring rules are a public-surface requirement, not a test-suite one.
+"tests/**" = ["D"]
+"tools/**" = ["D"]
+"benchmarks/**" = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

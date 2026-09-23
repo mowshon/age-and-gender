@@ -1,0 +1,330 @@
+"""Build, install, and run the wheel outside the checkout.
+
+Source-tree tests cannot show that the model resources are actually packaged, or
+that resolving them is independent of the working directory, so this module
+builds the distributions, installs the wheel into a separate environment, and
+runs chip inference from an unrelated directory with no index available.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import sysconfig
+import tarfile
+import tempfile
+import unittest
+import zipfile
+from collections.abc import Callable
+from pathlib import Path
+
+from tests.golden import golden_images
+
+ROOT = Path(__file__).resolve().parents[2]
+NATIVE_SUFFIXES = (".so", ".pyd", ".dylib", ".dll", ".a", ".lib")
+BUILD_TIMEOUT = 900
+MODEL_RESOURCES = (
+    "models/manifest.json",
+    "models/age-v1.onnx",
+    "models/gender-v1.onnx",
+    "models/shape_predictor_5_face_landmarks.dat",
+)
+NOTICES = (
+    "models/notices/Cydral-age-gender-models.md",
+    "models/notices/dlib-shape-predictor-5-face-landmarks.md",
+)
+
+CHILD_PROGRAM = """
+import json, sys
+from pathlib import Path
+
+import numpy as np
+
+import age_and_gender
+from age_and_gender._inference import InferenceEngine
+from age_and_gender._models import bundled_models
+from age_and_gender._postprocess import face_predictions
+
+request = json.loads(Path(sys.argv[1]).read_text())
+bundle = bundled_models()
+engine = InferenceEngine(bundle)
+
+def chips(task):
+    return [
+        np.fromfile(face[task + "_chip"], dtype=np.uint8).reshape(face[task + "_shape"])
+        for face in request["faces"]
+    ]
+
+results = face_predictions(
+    [face["rectangle"] for face in request["faces"]],
+    engine.gender.probabilities(chips("gender")),
+    engine.age.probabilities(chips("age")),
+    labels=bundle.gender.labels,
+    age_weights=bundle.age.age_weights,
+)
+print(json.dumps({
+    "version": age_and_gender.__version__,
+    "package_file": age_and_gender.__file__,
+    "bundle_origin": bundle.origin,
+    "sys_path": [entry for entry in sys.path if entry],
+    "cwd": str(Path.cwd()),
+    "results": results,
+    "empty": engine.age.probabilities([]).shape,
+}))
+"""
+
+
+def _run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=BUILD_TIMEOUT,
+        **kwargs,  # type: ignore[arg-type]
+    )
+
+
+@unittest.skipUnless(
+    (ROOT / "pyproject.toml").is_file(), "distribution tests need the project source"
+)
+class PackagedDistributionTests(unittest.TestCase):
+    """One build and one installation shared by every check in this module."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        try:
+            import build  # noqa: F401
+        except ImportError as error:  # pragma: no cover - environment dependent
+            raise unittest.SkipTest(f"the build frontend is not installed: {error}") from error
+        cls._workspace = tempfile.TemporaryDirectory()
+        cls.workspace = Path(cls._workspace.name)
+        cls.dist = cls.workspace / "dist"
+        # --no-isolation keeps the build offline: hatchling comes from this
+        # environment instead of being downloaded into a throwaway one.
+        _run(
+            [sys.executable, "-m", "build", "--no-isolation", "--outdir", str(cls.dist), str(ROOT)],
+            cwd=str(cls.workspace),
+        )
+        wheels = sorted(cls.dist.glob("*.whl"))
+        archives = sorted(cls.dist.glob("*.tar.gz"))
+        assert len(wheels) == 1 and len(archives) == 1, (wheels, archives)
+        cls.wheel = wheels[0]
+        cls.sdist = archives[0]
+        cls.wheel_names = zipfile.ZipFile(cls.wheel).namelist()
+        with tarfile.open(cls.sdist) as archive:
+            cls.sdist_names = archive.getnames()
+        cls.environment = cls._install(cls.workspace / "env", cls.wheel)
+        cls.output = cls._infer(cls.environment)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._workspace.cleanup()
+
+    @classmethod
+    def _install(cls, prefix: Path, wheel: Path) -> Path:
+        """Create an environment outside the checkout and install the wheel offline."""
+        _run([sys.executable, "-m", "venv", str(prefix)])
+        python = prefix / ("Scripts" if os.name == "nt" else "bin") / "python"
+        site = Path(
+            _run(
+                [str(python), "-c", "import sysconfig;print(sysconfig.get_paths()['purelib'])"]
+            ).stdout.strip()
+        )
+        # NumPy and ONNX Runtime are added from this project's environment
+        # instead of being downloaded, so the whole check stays offline. The
+        # path is appended after the new environment's own site-packages, so the
+        # installed wheel is what provides age_and_gender.
+        (site / "_project_dependencies.pth").write_text(
+            f"{sysconfig.get_paths()['purelib']}\n", encoding="utf-8"
+        )
+        _run([str(python), "-m", "pip", "install", "--no-index", "--no-deps", str(wheel)])
+        return python
+
+    @classmethod
+    def _infer(cls, python: Path) -> dict:
+        """Run chip inference from an unrelated directory with a minimal environment."""
+        sandbox = cls.workspace / "elsewhere"
+        sandbox.mkdir()
+        # The chips are copied out of the checkout so the child reads nothing
+        # from the source tree except the wheel it has installed.
+        faces = golden_images()["test-image.golden.json"]
+        request: dict[str, list[dict]] = {"faces": []}
+        for face in faces:
+            entry = {"rectangle": face.rectangle}
+            for task in ("age", "gender"):
+                chip = face.chip(task)
+                path = sandbox / f"face-{face.index}-{task}.rgb"
+                path.write_bytes(chip.tobytes())
+                entry[f"{task}_chip"] = str(path)
+                entry[f"{task}_shape"] = list(chip.shape)
+            request["faces"].append(entry)
+        request_path = sandbox / "request.json"
+        request_path.write_text(json.dumps(request), encoding="utf-8")
+        program = sandbox / "run_inference.py"
+        program.write_text(CHILD_PROGRAM, encoding="utf-8")
+        empty_path = cls.workspace / "empty-path"
+        empty_path.mkdir()
+        environment = {
+            "HOME": str(cls.workspace),
+            # No compiler, no CMake, and no index: an installed wheel has to be
+            # self-sufficient.
+            "PATH": str(empty_path),
+            "PYTHONNOUSERSITE": "1",
+            "PIP_NO_INDEX": "1",
+        }
+        if "SYSTEMROOT" in os.environ:  # pragma: no cover - Windows only
+            environment["SYSTEMROOT"] = os.environ["SYSTEMROOT"]
+        completed = _run(
+            [str(python), str(program), str(request_path)],
+            cwd=str(sandbox),
+            env=environment,
+        )
+        return json.loads(completed.stdout)
+
+    def test_wheel_is_pure_python_and_has_no_native_extension(self) -> None:
+        self.assertTrue(self.wheel.name.endswith("-py3-none-any.whl"), self.wheel.name)
+        native = [name for name in self.wheel_names if name.lower().endswith(NATIVE_SUFFIXES)]
+        self.assertEqual(native, [])
+        self.assertNotIn("age_and_gender.py", self.wheel_names)
+        top_level = {name.split("/")[0] for name in self.wheel_names}
+        self.assertEqual(
+            top_level, {"age_and_gender", f"age_and_gender-{self.output['version']}.dist-info"}
+        )
+
+    def test_wheel_carries_the_model_resources(self) -> None:
+        for name in (*MODEL_RESOURCES, *NOTICES, "py.typed"):
+            self.assertIn(f"age_and_gender/{name}", self.wheel_names)
+
+    def test_wheel_resources_match_their_recorded_digests(self) -> None:
+        with zipfile.ZipFile(self.wheel) as archive:
+            self._check_digests(
+                lambda name: archive.read(f"age_and_gender/{name}"),
+            )
+
+    def test_source_distribution_carries_the_model_resources(self) -> None:
+        stem = self.sdist.name[: -len(".tar.gz")]
+        for name in (*MODEL_RESOURCES, *NOTICES):
+            self.assertIn(f"{stem}/src/age_and_gender/{name}", self.sdist_names)
+        self.assertIn(f"{stem}/pyproject.toml", self.sdist_names)
+        self.assertFalse(
+            [name for name in self.sdist_names if "/libs/" in name or name.endswith("setup.py")],
+            "the sdist must not ship the historical native build",
+        )
+
+    def test_source_distribution_resources_match_their_recorded_digests(self) -> None:
+        stem = self.sdist.name[: -len(".tar.gz")]
+        with tarfile.open(self.sdist) as archive:
+
+            def read(name: str) -> bytes:
+                member = archive.extractfile(f"{stem}/src/age_and_gender/{name}")
+                assert member is not None, name
+                return member.read()
+
+            self._check_digests(read)
+
+    def _check_digests(self, read: Callable[[str], bytes]) -> None:
+        """Verify the shipped artifacts and notices against the shipped manifest."""
+        manifest = json.loads(read("models/manifest.json"))
+        recorded = {
+            manifest["models"]["age"]["artifact"]["filename"]: manifest["models"]["age"][
+                "artifact"
+            ],
+            manifest["models"]["gender"]["artifact"]["filename"]: manifest["models"]["gender"][
+                "artifact"
+            ],
+            manifest["shape_predictor"]["artifact"]["filename"]: manifest["shape_predictor"][
+                "artifact"
+            ],
+            manifest["license"]["notice"]["path"]: manifest["license"]["notice"],
+            manifest["shape_predictor"]["license"]["notice"]["path"]: manifest["shape_predictor"][
+                "license"
+            ]["notice"],
+        }
+        self.assertEqual(len(recorded), 5)
+        for name, entry in recorded.items():
+            payload = read(f"models/{name}")
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), entry["sha256"], name)
+            if "bytes" in entry:
+                self.assertEqual(len(payload), entry["bytes"], name)
+
+    def test_runtime_dependencies_stay_minimal(self) -> None:
+        stem = self.wheel.name.split("-py3-none-any")[0]
+        with zipfile.ZipFile(self.wheel) as archive:
+            metadata = archive.read(f"{stem}.dist-info/METADATA").decode("utf-8")
+        required = [
+            line.split(":", 1)[1].strip()
+            for line in metadata.splitlines()
+            if line.startswith("Requires-Dist:") and "extra ==" not in line
+        ]
+        self.assertTrue(any(name.startswith("numpy") for name in required), required)
+        self.assertTrue(any(name.startswith("onnxruntime") for name in required), required)
+        excluded_prefixes = (
+            "onnx ",
+            "onnx=",
+            "torch",
+            "caffe",
+            "face-recognition",
+            "face_recognition",
+        )
+        for excluded in excluded_prefixes:
+            self.assertFalse(
+                [name for name in required if name.lower().startswith(excluded)], required
+            )
+
+    def test_a_wheel_can_be_built_from_the_source_distribution(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            extracted = Path(directory)
+            with tarfile.open(self.sdist) as archive:
+                archive.extractall(extracted, filter="data")
+            source = extracted / self.sdist.name[: -len(".tar.gz")]
+            _run(
+                [sys.executable, "-m", "build", "--wheel", "--no-isolation", str(source)],
+                cwd=str(extracted),
+            )
+            rebuilt = sorted((source / "dist").glob("*.whl"))
+            self.assertEqual(len(rebuilt), 1)
+            self.assertEqual(rebuilt[0].name, self.wheel.name)
+            self.assertEqual(
+                sorted(zipfile.ZipFile(rebuilt[0]).namelist()), sorted(self.wheel_names)
+            )
+
+    def test_installed_package_runs_from_an_unrelated_directory(self) -> None:
+        package_file = Path(self.output["package_file"])
+        self.assertNotIn(str(ROOT), str(package_file))
+        self.assertIn("site-packages", str(package_file))
+        self.assertNotIn(str(ROOT), self.output["cwd"])
+
+    def test_no_checkout_source_is_on_the_installed_runtime_path(self) -> None:
+        """Neither the package sources, libs/, nor the CMake build tree is reachable.
+
+        The project environment's site-packages is under the checkout and is
+        deliberately allowed: it is how this test supplies NumPy and ONNX
+        Runtime without an index.
+        """
+        dependencies = str(Path(sysconfig.get_paths()["purelib"]).resolve())
+        forbidden = [str(ROOT), *(str(ROOT / name) for name in ("src", "libs", "build"))]
+        for entry in self.output["sys_path"]:
+            resolved = str(Path(entry).resolve())
+            if resolved == dependencies or resolved.startswith(f"{dependencies}{os.sep}"):
+                continue
+            for prefix in forbidden:
+                self.assertFalse(
+                    resolved == prefix or resolved.startswith(f"{prefix}{os.sep}"),
+                    f"{entry} points back into {prefix}",
+                )
+
+    def test_bundled_models_resolve_through_the_installed_package(self) -> None:
+        self.assertEqual(self.output["bundle_origin"], "age_and_gender.models")
+        self.assertEqual(self.output["empty"], [0, 81])
+
+    def test_offline_inference_reproduces_the_frozen_results(self) -> None:
+        expected = [face.result for face in golden_images()["test-image.golden.json"]]
+        self.assertEqual(self.output["results"], expected)
+
+
+if __name__ == "__main__":
+    unittest.main()

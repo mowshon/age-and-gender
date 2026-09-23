@@ -250,7 +250,9 @@ def validate_manifest(bundle: Path, manifest: dict[str, Any]) -> None:
             raise ValueError(f"{task} model has an unexpected IR version")
 
 
-def fixture_cases(task: str) -> list[tuple[str, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]]:
+def fixture_cases(
+    task: str,
+) -> list[tuple[str, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]]:
     cases = []
     for golden_path in sorted(FIXTURES.glob("*.golden.json")):
         golden = json.loads(golden_path.read_text(encoding="utf-8"))
@@ -454,7 +456,7 @@ def validate_stages(
     chips = fixture_chips(task)
     if not chips:
         raise ValueError(f"no frozen {task} chips available for stage comparison")
-    label, _, first_tensor = chips[0]
+    label = chips[0][0]
     images = np.stack([chip for _, chip, _ in chips])
     tensors = np.concatenate([tensor for _, _, tensor in chips])
     stages_dir = work_dir / f"{task}-stages"
