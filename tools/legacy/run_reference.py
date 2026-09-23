@@ -14,7 +14,6 @@ from typing import Any
 
 from PIL import Image
 
-
 MODEL_HASHES = {
     "dnn_age_predictor_v1.dat": "4b78d4d7055e22620e362884b5551caa9379080277338aa2d4cdfc592f0e9fa3",
     "dnn_gender_classifier_v1.dat": (

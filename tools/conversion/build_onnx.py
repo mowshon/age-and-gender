@@ -19,7 +19,6 @@ import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper, shape_inference
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_MODELS = {
     "age": {
@@ -315,9 +314,11 @@ class GraphBuilder:
             index = layer.attrib["idx"]
             layer_type = layer.attrib["type"]
             if layer_type == "input":
-                definition = list(layer)[0]
+                definition = next(iter(layer))
                 means = [float(definition.attrib[channel]) for channel in ("r", "g", "b")]
-                if not np.array_equal(np.asarray(means, dtype=np.float32), np.asarray(MEANS, dtype=np.float32)):
+                if not np.array_equal(
+                    np.asarray(means, dtype=np.float32), np.asarray(MEANS, dtype=np.float32)
+                ):
                     raise ValueError(f"unexpected {self.task} input means: {means}")
                 if definition.tag == "input_rgb_image_sized" and (
                     int(definition.attrib["nr"]) != self.size
@@ -340,7 +341,7 @@ class GraphBuilder:
                 current = self.tags[tag_id]
                 continue
 
-            definition = list(layer)[0]
+            definition = next(iter(layer))
             if definition.tag == "con":
                 current = self.convolution(current, definition, index)
             elif definition.tag == "affine_con":
@@ -385,10 +386,22 @@ class GraphBuilder:
         graph = helper.make_graph(
             self.nodes,
             f"age-and-gender-{self.task}-v1",
-            [helper.make_tensor_value_info("images", TensorProto.FLOAT, ["N", 3, self.size, self.size])],
-            [helper.make_tensor_value_info("probabilities", TensorProto.FLOAT, ["N", self.classes])],
+            [
+                helper.make_tensor_value_info(
+                    "images", TensorProto.FLOAT, ["N", 3, self.size, self.size]
+                )
+            ],
+            [
+                helper.make_tensor_value_info(
+                    "probabilities", TensorProto.FLOAT, ["N", self.classes]
+                )
+            ],
             initializer=self.initializers,
-            value_info=[helper.make_tensor_value_info("logits", TensorProto.FLOAT, ["N", self.classes])],
+            value_info=[
+                helper.make_tensor_value_info(
+                    "logits", TensorProto.FLOAT, ["N", self.classes]
+                )
+            ],
         )
         model = helper.make_model(
             graph,

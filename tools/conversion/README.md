@@ -66,6 +66,25 @@ Only `onnx.version` and `tool_versions` differed. The graph contract fields
 contract rather than the onnx library version: pinning the version would reject
 this bundle on any other toolchain.
 
+## Package bundle
+
+`build_bundle.py` assembles what the wheel installs. It re-verifies every
+artifact the conversion manifest names, copies the two graphs and their notice,
+adds the original five-point landmark model (pinned by SHA-256, copied rather
+than converted, because dlib loads it directly), and writes the package
+manifest:
+
+```bash
+venv/bin/python tools/conversion/build_bundle.py
+```
+
+The package manifest is the conversion manifest plus `"bundle_kind": "package"`
+and a `shape_predictor` block; every other field is carried over byte for byte,
+which `tests/unit/test_models.py` checks. Rebuild it whenever a new conversion
+bundle is produced. The runtime reads this manifest, not the one under
+`artifacts/`, and refuses the conversion directory by name because it has no
+landmark model.
+
 ## Validated runtime setting
 
 Version 1 uses `CPUExecutionProvider` with
