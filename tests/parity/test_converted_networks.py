@@ -20,6 +20,8 @@ try:
         MODELS,
         OPTIMIZATION_LEVELS,
         SELECTED_SETTING,
+        SELECTED_THREAD_SETTING,
+        THREAD_CANDIDATES,
         THREAD_SETTINGS,
         Comparison,
         add_debug_outputs,
@@ -135,7 +137,7 @@ class ConvertedNetworkTests(unittest.TestCase):
         report = json.loads(
             (BUNDLE / "conversion-report.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(report["schema_version"], 2)
+        self.assertEqual(report["schema_version"], 3)
         self.assertTrue(report["passed"])
         self.assertTrue(report["stages_passed"])
         self.assertEqual(report["selected_setting"], SELECTED_SETTING)
@@ -151,6 +153,29 @@ class ConvertedNetworkTests(unittest.TestCase):
                 ],
                 [1, 2, 7, 32],
             )
+
+    def test_checked_conversion_report_thread_investigation(self) -> None:
+        """spec/PR-6.md's thread-count axis (mirrors the optimization-level one)."""
+        report = json.loads(
+            (BUNDLE / "conversion-report.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(report["selected_thread_setting"], SELECTED_THREAD_SETTING)
+        self.assertEqual(report["thread_candidates"], THREAD_CANDIDATES)
+        self.assertEqual(set(report["thread_variants"]), set(THREAD_CANDIDATES))
+        self.assertEqual(set(report["thread_stages"]), set(THREAD_CANDIDATES))
+        for task in MODELS:
+            self.assertEqual(
+                report["thread_variants"][SELECTED_THREAD_SETTING]["thread_settings"],
+                THREAD_SETTINGS,
+            )
+            self.assertEqual(
+                report["thread_stages"][SELECTED_THREAD_SETTING][task]["thread_settings"],
+                THREAD_SETTINGS,
+            )
+        # Shipping a higher default is still an explicit, separate decision
+        # (see SUPPORTED_RUNTIME in _models.py); this only checks that the
+        # investigation itself ran and recorded a real pass/fail per candidate.
+        self.assertIsInstance(report["thread_investigation_passed"], bool)
 
     def test_report_records_measured_rejections_rather_than_prose(self) -> None:
         report = json.loads(

@@ -17,7 +17,7 @@ import onnxruntime as ort
 from ._models import TASKS, ModelBundle, NeuralModelSpec
 from ._types import Task
 
-__all__ = ["InferenceEngine", "NeuralNetwork", "prepare_batch"]
+__all__ = ["DEFAULT_MAX_BATCH_SIZE", "InferenceEngine", "NeuralNetwork", "prepare_batch"]
 
 GRAPH_OPTIMIZATION_LEVELS: Final[dict[str, ort.GraphOptimizationLevel]] = {
     "ORT_DISABLE_ALL": ort.GraphOptimizationLevel.ORT_DISABLE_ALL,
@@ -26,6 +26,24 @@ GRAPH_OPTIMIZATION_LEVELS: Final[dict[str, ort.GraphOptimizationLevel]] = {
     "ORT_ENABLE_ALL": ort.GraphOptimizationLevel.ORT_ENABLE_ALL,
 }
 _PROBABILITY_SUM_TOLERANCE: Final = 1e-3
+
+# spec/PR-6.md requires bounding memory on high-face-count images rather than
+# handing ONNX Runtime one unbounded batch per call. This bounds the size of
+# each individual prepared tensor and ONNX Runtime call, not the caller's
+# total working set for one image: api.py's predict() still extracts and
+# retains every face's chips up front (chip extraction cannot itself be
+# batched; see _faces.py's module docstring), so total memory still scales
+# with face count regardless of this bound, just without ever building one
+# oversized tensor/call. 32 is not an arbitrary round number: it is the
+# largest batch size the conversion tooling and
+# tests/parity/test_converted_networks.py already validate numerically
+# (batch sizes 1, 2, 7, 32 in tools/conversion/validate_conversion.py), so
+# chunking at this boundary carries existing parity evidence rather than
+# introducing an unvalidated one. Chunking is otherwise invisible: each row's
+# probabilities are independent of its batch (see
+# test_heterogeneous_batch_matches_individual_inference), so splitting one
+# call into several never changes a result, only peak memory and call count.
+DEFAULT_MAX_BATCH_SIZE: Final = 32
 
 
 def prepare_batch(chips: np.ndarray | Sequence[np.ndarray], spec: NeuralModelSpec) -> np.ndarray:
@@ -77,11 +95,18 @@ class NeuralNetwork:
     never re-read and the graph is never re-optimized per prediction.
     """
 
-    def __init__(self, bundle: ModelBundle, task: Task) -> None:
+    def __init__(
+        self, bundle: ModelBundle, task: Task, *, max_batch_size: int = DEFAULT_MAX_BATCH_SIZE
+    ) -> None:
+        if isinstance(max_batch_size, bool) or not isinstance(max_batch_size, int):
+            raise TypeError(f"max_batch_size must be an int, got {type(max_batch_size).__name__}")
+        if max_batch_size < 1:
+            raise ValueError(f"max_batch_size must be positive, got {max_batch_size}")
         self._bundle = bundle
         self._spec = bundle.spec(task)
         self._runtime = bundle.runtime
         self._session: ort.InferenceSession | None = None
+        self._max_batch_size = max_batch_size
 
     def __repr__(self) -> str:
         state = "loaded" if self._session is not None else "not loaded"
@@ -107,6 +132,16 @@ class NeuralNetwork:
         """Whether the session has been created."""
         return self._session is not None
 
+    @property
+    def max_batch_size(self) -> int:
+        """The most chips a single ONNX Runtime call will be given at once.
+
+        A ``probabilities()`` call with more chips than this is split into
+        several ordered, concatenated calls (see :meth:`probabilities`) rather
+        than growing one call's memory without bound.
+        """
+        return self._max_batch_size
+
     def ensure_loaded(self) -> None:
         """Create and validate the session if it does not exist yet.
 
@@ -121,6 +156,18 @@ class NeuralNetwork:
     def probabilities(self, chips: np.ndarray | Sequence[np.ndarray]) -> np.ndarray:
         """Run the network over aligned uint8 chips.
 
+        A call with more than :attr:`max_batch_size` chips is split into
+        several ordered chunks, each prepared and run separately and their
+        results concatenated back together; this bounds the peak size of any
+        one ONNX Runtime call on a high-face-count image instead of preparing
+        and running one unbounded batch. Chunking does not change a result:
+        each row's probabilities depend only on its own chip, never on what
+        else shares its batch (validated by
+        tests/parity/test_converted_networks.py's batch-size sweep and
+        tests/parity/test_batching.py). A call at or under the limit takes the
+        same single-batch path as before; splitting only ever adds a Python
+        loop, never a "batch setup" cost, to the common one-face case.
+
         Args:
             chips: Chips in face order, as accepted by :func:`prepare_batch`.
 
@@ -130,7 +177,14 @@ class NeuralNetwork:
         Raises:
             ValueError: The chips or the resulting probabilities are invalid.
         """
-        return self.run(prepare_batch(chips, self._spec))
+        batch = _stack_chips(chips, self._spec)
+        if batch.shape[0] <= self._max_batch_size:
+            return self.run(prepare_batch(batch, self._spec))
+        chunks = [
+            self.run(prepare_batch(batch[start : start + self._max_batch_size], self._spec))
+            for start in range(0, batch.shape[0], self._max_batch_size)
+        ]
+        return np.concatenate(chunks, axis=0)
 
     def run(self, inputs: np.ndarray) -> np.ndarray:
         """Run the network over a prepared input tensor.

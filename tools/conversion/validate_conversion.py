@@ -78,7 +78,26 @@ OPTIMIZATION_LEVELS = {
     "extended": ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED,
     "all": ort.GraphOptimizationLevel.ORT_ENABLE_ALL,
 }
-THREAD_SETTINGS = {"intra_op_num_threads": 1, "inter_op_num_threads": 1}
+
+# spec/PR-6.md's "Optimization order" step 5 asks for a thread-count axis
+# alongside the graph-optimization sweep above; this mirrors that pattern.
+# `1x1` is the shipped default (SUPPORTED_RUNTIME in _models.py); the other
+# candidates were spot-checked by hand during PR-6 (see
+# benchmarks/report-pr6.md's "Evaluated but not changed" section) and are
+# promoted here to checked-in, machine-readable validation. 12 is this
+# repository's own logical core count (see benchmarks/report-pr6.md's
+# environment); higher than that would not be a realistic single-session
+# candidate on this machine.
+SELECTED_THREAD_SETTING = "1x1"
+THREAD_CANDIDATES = {
+    "1x1": {"intra_op_num_threads": 1, "inter_op_num_threads": 1},
+    "2x1": {"intra_op_num_threads": 2, "inter_op_num_threads": 1},
+    "4x1": {"intra_op_num_threads": 4, "inter_op_num_threads": 1},
+    "6x1": {"intra_op_num_threads": 6, "inter_op_num_threads": 1},
+}
+# Kept as the name the manifest contract (`_models.py`'s `SUPPORTED_RUNTIME`)
+# and `validate_manifest()` below were already written against.
+THREAD_SETTINGS = THREAD_CANDIDATES[SELECTED_THREAD_SETTING]
 
 
 def sha256_file(path: Path) -> str:
@@ -135,11 +154,15 @@ def add_debug_outputs(model_path: Path, stages: tuple[int, ...] = ()) -> bytes:
     return model.SerializeToString(deterministic=True)
 
 
-def make_session(model: bytes, optimization: ort.GraphOptimizationLevel) -> ort.InferenceSession:
+def make_session(
+    model: bytes,
+    optimization: ort.GraphOptimizationLevel,
+    threads: dict[str, int] = THREAD_SETTINGS,
+) -> ort.InferenceSession:
     options = ort.SessionOptions()
     options.graph_optimization_level = optimization
-    options.intra_op_num_threads = THREAD_SETTINGS["intra_op_num_threads"]
-    options.inter_op_num_threads = THREAD_SETTINGS["inter_op_num_threads"]
+    options.intra_op_num_threads = threads["intra_op_num_threads"]
+    options.inter_op_num_threads = threads["inter_op_num_threads"]
     return ort.InferenceSession(model, sess_options=options, providers=["CPUExecutionProvider"])
 
 
@@ -440,19 +463,19 @@ def validate_synthetic(
     }
 
 
-def validate_stages(
+def load_stage_reference(
     task: str,
-    bundle: Path,
     probe: Path,
     source_models: Path,
     work_dir: Path,
-) -> dict[str, Any]:
-    """Compare every exported dlib stage tensor with the converted graph.
+) -> tuple[str, int, np.ndarray, dict[int, np.ndarray]]:
+    """Export the frozen chips' dlib stage tensors once, independent of thread count.
 
-    This localizes a conversion error to a block instead of only reporting that
-    the final logits drifted, and it is what checks the residual branches.
+    The C++ probe subprocess is the expensive, thread-count-independent part of
+    stage comparison (it re-derives ground truth from dlib, not from the
+    converted graph), so it is run once per task and the result is reused by
+    every ``compare_stages`` call instead of being re-invoked per candidate.
     """
-    contract = MODELS[task]
     chips = fixture_chips(task)
     if not chips:
         raise ValueError(f"no frozen {task} chips available for stage comparison")
@@ -463,10 +486,28 @@ def validate_stages(
     _, _, stage_tensors = run_probe(
         probe, source_models, work_dir, task, images, stages_dir=stages_dir
     )
+    return label, len(chips), tensors, stage_tensors
+
+
+def compare_stages(
+    task: str,
+    bundle: Path,
+    label: str,
+    chip_count: int,
+    tensors: np.ndarray,
+    stage_tensors: dict[int, np.ndarray],
+    level: ort.GraphOptimizationLevel,
+    threads: dict[str, int],
+) -> dict[str, Any]:
+    """Compare every exported dlib stage tensor with the converted graph.
+
+    This localizes a conversion error to a block instead of only reporting that
+    the final logits drifted, and it is what checks the residual branches.
+    """
+    contract = MODELS[task]
     indices = tuple(sorted(stage_tensors))
     session = make_session(
-        add_debug_outputs(bundle / f"{task}-v1.onnx", indices),
-        OPTIMIZATION_LEVELS[SELECTED_SETTING],
+        add_debug_outputs(bundle / f"{task}-v1.onnx", indices), level, threads
     )
     model = onnx.load(bundle / f"{task}-v1.onnx", load_external_data=False)
     names = stage_tensor_names(model)
@@ -493,16 +534,49 @@ def validate_stages(
             }
         )
     return {
-        "chips": len(chips),
+        "chips": chip_count,
         "first_chip": label,
         "note": (
             "Stage tensors are pinned as extra graph outputs, which suppresses "
             "fusion, so stages are compared only at the selected setting."
         ),
         "activation_tolerance": ACTIVATION_TOLERANCE,
+        "thread_settings": threads,
         "combined": check.summary(),
         "stages": per_stage,
     }
+
+
+def validate_stages(
+    task: str,
+    bundle: Path,
+    probe: Path,
+    source_models: Path,
+    work_dir: Path,
+    *,
+    level: ort.GraphOptimizationLevel | None = None,
+    threads: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    """Convenience wrapper: load the reference and compare in one call.
+
+    ``main()`` calls :func:`load_stage_reference` and :func:`compare_stages`
+    directly so the expensive probe export is shared across every thread
+    candidate instead of repeated once per candidate; this wrapper exists for
+    single-shot callers (tests, ad-hoc scripts) that only need one comparison.
+    """
+    label, chip_count, tensors, stage_tensors = load_stage_reference(
+        task, probe, source_models, work_dir
+    )
+    return compare_stages(
+        task,
+        bundle,
+        label,
+        chip_count,
+        tensors,
+        stage_tensors,
+        OPTIMIZATION_LEVELS[SELECTED_SETTING] if level is None else level,
+        THREAD_SETTINGS if threads is None else threads,
+    )
 
 
 def evaluate_setting(
@@ -512,10 +586,26 @@ def evaluate_setting(
     probe: Path,
     source_models: Path,
     work_dir: Path,
+    *,
+    threads: dict[str, int] = THREAD_SETTINGS,
+    selected: bool | None = None,
 ) -> dict[str, Any]:
-    result: dict[str, Any] = {"selected": name == SELECTED_SETTING, "models": {}}
+    """Run the full fixture + synthetic-reference gate at one (level, threads) point.
+
+    Used for both axes this tool sweeps: the graph-optimization axis (varying
+    ``level``, ``threads`` fixed at the shipped default) and the thread-count
+    axis (varying ``threads``, ``level`` fixed at the shipped default). ``name``
+    identifies the candidate; ``selected`` marks which one is the axis's
+    currently-shipped choice (defaults to comparing ``name`` against
+    ``SELECTED_SETTING`` for the optimization-level axis's own call sites).
+    """
+    result: dict[str, Any] = {
+        "selected": (name == SELECTED_SETTING) if selected is None else selected,
+        "thread_settings": threads,
+        "models": {},
+    }
     for task in MODELS:
-        session = make_session(add_debug_outputs(bundle / f"{task}-v1.onnx"), level)
+        session = make_session(add_debug_outputs(bundle / f"{task}-v1.onnx"), level, threads)
         fixtures = validate_fixtures(task, session)
         synthetic = validate_synthetic(task, session, probe, source_models, work_dir)
         result["models"][task] = {"fixtures": fixtures, "synthetic": synthetic}
@@ -566,15 +656,74 @@ def main() -> int:
         name: evaluate_setting(name, level, bundle, probe, source_models, work_dir)
         for name, level in OPTIMIZATION_LEVELS.items()
     }
+    # Thread-count axis: same full fixture + synthetic gate as the
+    # optimization-level axis above, but varying intra/inter-op threads with
+    # the graph optimization level held at the shipped SELECTED_SETTING.
+    thread_variants = {
+        name: evaluate_setting(
+            name,
+            OPTIMIZATION_LEVELS[SELECTED_SETTING],
+            bundle,
+            probe,
+            source_models,
+            work_dir,
+            threads=threads,
+            selected=(name == SELECTED_THREAD_SETTING),
+        )
+        for name, threads in THREAD_CANDIDATES.items()
+    }
+
+    # The dlib stage reference (the expensive, C++-probe-driven half of stage
+    # comparison) does not depend on ONNX Runtime thread count, so it is
+    # exported once per task and reused for every thread candidate below
+    # rather than re-invoking the probe once per candidate.
+    stage_reference = {
+        task: load_stage_reference(task, probe, source_models, work_dir) for task in MODELS
+    }
     stages = {
-        task: validate_stages(task, bundle, probe, source_models, work_dir)
+        task: compare_stages(
+            task,
+            bundle,
+            *stage_reference[task],
+            OPTIMIZATION_LEVELS[SELECTED_SETTING],
+            THREAD_SETTINGS,
+        )
         for task in MODELS
+    }
+    thread_stages = {
+        name: {
+            task: compare_stages(
+                task,
+                bundle,
+                *stage_reference[task],
+                OPTIMIZATION_LEVELS[SELECTED_SETTING],
+                threads,
+            )
+            for task in MODELS
+        }
+        for name, threads in THREAD_CANDIDATES.items()
     }
 
     selected = settings[SELECTED_SETTING]
     stages_passed = all(entry["combined"]["passed"] for entry in stages.values())
+    thread_variants_passed = all(entry["passed"] for entry in thread_variants.values())
+    thread_stages_passed = all(
+        entry["combined"]["passed"]
+        for variant in thread_stages.values()
+        for entry in variant.values()
+    )
+    # Numerical parity across candidate thread counts is necessary evidence
+    # for raising SUPPORTED_RUNTIME (_models.py) but not sufficient by itself:
+    # spec/PR-6.md also asks for an independent-session oversubscription
+    # comparison, which is a throughput measurement, not a parity gate, and
+    # therefore lives in benchmarks/concurrency_benchmark.py instead of here.
+    # This flag records only the parity half of that decision; it never
+    # changes which setting `report["passed"]` (the release gate) is judged
+    # against — that stays SELECTED_SETTING/SELECTED_THREAD_SETTING, the
+    # shipped default, regardless of what other candidates show.
+    thread_investigation_passed = thread_variants_passed and thread_stages_passed
     report: dict[str, Any] = {
-        "schema_version": 2,
+        "schema_version": 3,
         "bundle_id": manifest["bundle_id"],
         "onnx": onnx.__version__,
         "onnxruntime": ort.__version__,
@@ -583,6 +732,8 @@ def main() -> int:
         "provider": "CPUExecutionProvider",
         "thread_settings": THREAD_SETTINGS,
         "selected_setting": SELECTED_SETTING,
+        "selected_thread_setting": SELECTED_THREAD_SETTING,
+        "thread_candidates": THREAD_CANDIDATES,
         "tolerances": {
             task: {
                 "logits": MODELS[task]["logits_tolerance"],
@@ -608,6 +759,17 @@ def main() -> int:
         "settings": settings,
         "stages": stages,
         "stages_passed": stages_passed,
+        "thread_variants": thread_variants,
+        "thread_stages": thread_stages,
+        "thread_investigation_passed": thread_investigation_passed,
+        "thread_investigation_note": (
+            "Numerical parity across intra_op_num_threads candidates is necessary "
+            "but not sufficient to raise SUPPORTED_RUNTIME (_models.py): see "
+            "benchmarks/concurrency_benchmark.py and benchmarks/report-pr6.md's "
+            "thread/concurrency section for the independent-session "
+            "oversubscription measurement spec/PR-6.md also requires before a "
+            "higher thread count can replace the shipped (1,1) default."
+        ),
         "passed": bool(selected["passed"] and stages_passed),
     }
     report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -615,7 +777,14 @@ def main() -> int:
         print(f"conversion validation FAILED; see {report_path}", file=sys.stderr)
         return 1
     rejected = sorted(name for name, entry in settings.items() if not entry["passed"])
+    thread_rejected = sorted(name for name, entry in thread_variants.items() if not entry["passed"])
     print(f"conversion validation passed at '{SELECTED_SETTING}'; rejected: {rejected or 'none'}")
+    print(
+        f"thread investigation: candidates {sorted(THREAD_CANDIDATES)}, "
+        f"numerically rejected: {thread_rejected or 'none'} "
+        f"(shipped default stays '{SELECTED_THREAD_SETTING}'; see "
+        "benchmarks/concurrency_benchmark.py for the oversubscription check)"
+    )
     return 0
 
 
