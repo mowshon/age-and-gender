@@ -491,7 +491,7 @@ def make_manifest(output: Path, source_dir: Path) -> dict[str, Any]:
         "schema_version": 1,
         "bundle_id": "age-and-gender-v1",
         "converter_revision": converter_revision(),
-        "dlib": {"version": "19.20.0", "source": "libs/dlib"},
+        "dlib": {"version": "19.20.0", "source": "tools/vendor/dlib"},
         "onnx": {"version": onnx.__version__, "opset": OPSET, "ir_version": IR_VERSION},
         "runtime": RUNTIME,
         "tool_versions": {

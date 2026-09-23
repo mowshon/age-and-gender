@@ -26,7 +26,7 @@ from tests.bundles import PACKAGE_MODELS, full_bundle
 from tests.golden import golden_documents, golden_images
 
 ROOT = Path(__file__).resolve().parents[2]
-NO_FACE_IMAGE = ROOT / "libs/dlib/examples/faces/dogs.jpg"
+NO_FACE_IMAGE = ROOT / "tools/vendor/dlib/examples/faces/dogs.jpg"
 
 
 def _load_test_image() -> np.ndarray:
@@ -115,7 +115,9 @@ class PredictionBehaviorTests(unittest.TestCase):
 
     def test_no_face_image_returns_empty_list(self) -> None:
         if not NO_FACE_IMAGE.is_file():
-            self.skipTest("libs/dlib/examples/faces/dogs.jpg is not available in this checkout")
+            self.skipTest(
+                "tools/vendor/dlib/examples/faces/dogs.jpg is not available in this checkout"
+            )
         with Image.open(NO_FACE_IMAGE) as image:
             array = as_rgb_array(image.convert("RGB"))
         self.assertEqual(self.predictor.predict(array), [])

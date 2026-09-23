@@ -11,10 +11,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "Mowshon" }]
 keywords = ["age", "gender", "face", "dlib", "onnx"]
 dynamic = ["version"]
-
-# The published README still documents the 1.x CMake extension, so it is
-# deliberately not wired in as the long description until the release PR
-# rewrites it for the Python package.
+readme = "README.md"
 
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -48,6 +45,10 @@ Source = "https://github.com/mowshon/age-and-gender"
 [project.optional-dependencies]
 dev = [
     "build>=1.2",
+    # tests/integration/test_package_resources.py builds with --no-isolation
+    # (offline, from this environment) rather than an isolated build venv, so
+    # the build backend has to be installed here explicitly.
+    "hatchling>=1.32",
     "pytest>=8.4",
     "ruff>=0.16",
 ]
@@ -69,8 +70,8 @@ only-include = [
     # the real detector/landmark/alignment path; the frozen chip-level parity
     # tests only need the pre-extracted tests/fixtures/legacy/artifacts, which
     # `tests` above already carries. This does not add `example/models/` (the
-    # legacy .dat duplicates) or `libs/` (vendored dlib, and the source of
-    # dogs.jpg, whose manifest notes it must not be redistributed separately).
+    # legacy .dat duplicates) or `tools/vendor/` (vendored dlib, and the source
+    # of dogs.jpg, whose manifest notes it must not be redistributed separately).
     "example/test-image.jpg",
     "example/test-image-2.jpg",
     "pyproject.toml",
@@ -79,18 +80,27 @@ only-include = [
 ]
 
 [tool.pytest.ini_options]
-# Vendored upstream sources under libs/ carry their own test suites; testpaths
-# keeps collection inside this project's tests.
+# Vendored upstream sources under tools/vendor/ carry their own test suites;
+# testpaths keeps collection inside this project's tests.
 testpaths = ["tests"]
 pythonpath = [".", "src"]
-norecursedirs = ["libs", "build", "venv", "*.egg-info"]
+norecursedirs = ["tools", "build", "venv", "*.egg-info"]
 
 [tool.ruff]
 line-length = 100
 src = ["src", "tests", "tools"]
-# The 1.x CMake packaging and the 1.x examples are historical source that the
-# API and release work replaces; they are not held to the new project style.
-extend-exclude = ["libs", "build", "venv", "setup.py", "example"]
+# The 1.x examples are historical source that the API and release work
+# replaces; they are not held to the new project style. tools/vendor/ is
+# upstream dlib/pybind11 source, and tools/legacy/original-extension/ is the
+# frozen 1.x extension recipe (see tools/legacy/README.md) — neither is this
+# project's own code.
+extend-exclude = [
+    "build",
+    "venv",
+    "example",
+    "tools/vendor",
+    "tools/legacy/original-extension",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF", "D"]

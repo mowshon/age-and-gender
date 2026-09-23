@@ -173,7 +173,9 @@ def main() -> None:
                 root / "tools/network_definitions.h"
             ),
             "build_recipe_sha256": sha256_file(root / "tools/legacy/CMakeLists.txt"),
-            "root_cmake_sha256": sha256_file(root / "CMakeLists.txt"),
+            "root_cmake_sha256": sha256_file(
+                root / "tools/legacy/original-extension/CMakeLists.txt"
+            ),
             "executable_sha256": sha256_file(args.oracle),
             "version_output": oracle_version,
             "command": command,

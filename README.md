@@ -1,148 +1,309 @@
-# Predict Age and Gender using Python
-This module will help you **determine the gender and age** of people from the image. The predict method **returns a list** of faces of people who were found in the image with a possible age and gender of the person.
+# age-and-gender
 
-**Available for Python** 2.7, 3.4, 3.5, 3.6, 3.7, 3.8
+Age and gender estimation from face images, with **no compiler required**.
+`pip install` pulls in prebuilt wheels only; there is no CMake, no C++
+compiler, and no model download at install or import time.
 
-![img](https://raw.githubusercontent.com/mowshon/age-and-gender/master/example/result.jpg)
+![Detected faces annotated with predicted age and gender](https://raw.githubusercontent.com/mowshon/age-and-gender/master/example/result.jpg)
 
 © [Bill Gates family](https://www.businessinsider.com/microsoft-bill-melinda-gates-drive-daughter-to-school-2019-4)
 
-# Instalation
+## Installation
 
 ```bash
-git clone git@github.com:mowshon/age-and-gender.git
-cd age-and-gender
-python3 setup.py install --user
+python -m pip install age-and-gender
 ```
 
-## Download the pre-trained models
+That's it — the age and gender networks and the five-point face landmark
+model are installed with the package, and prediction works offline
+immediately afterward.
 
-We use already trained models. Thanks for the provided models from: https://github.com/davisking/dlib-models
+### Supported platforms
 
-**Author**: [Davis E. King](https://github.com/davisking)
+| Platform | Minimum |
+| --- | --- |
+| Linux | glibc 2.28+, x86-64 or ARM64 |
+| Windows | x86-64 |
+| macOS | 14+, Apple Silicon (ARM64) |
 
-1. **shape_predictor_5_face_landmarks.dat.bz2** [Download](https://github.com/davisking/dlib-models/raw/master/shape_predictor_5_face_landmarks.dat.bz2)
+Supported Python versions are **3.12, 3.13, and 3.14**, standard-GIL builds.
+This matrix follows the wheel availability of this package's two native
+dependencies, ONNX Runtime and [`dlib-bin`](https://pypi.org/project/dlib-bin/)
+(see `spec/INVESTIGATION.md` for how it was derived). It is not a claim that
+every other combination fails — only that these are the ones this project
+builds and installs from wheels only. Precisely what `.github/workflows/ci.yml`
+proves for each cell, so this list isn't broader than the evidence:
 
-_This is a 5 point landmarking model which identifies the corners of the eyes and bottom of the nose. It is trained on the dlib 5-point face landmark dataset, which consists of 7198 faces. [@davisking](https://github.com/davisking) created this dataset by downloading images from the internet and annotating them with dlib's imglab tool._
-    
-2. **dnn_age_predictor_v1.dat.bz2** [Download](https://github.com/davisking/dlib-models/raw/master/age-predictor/dnn_age_predictor_v1.dat.bz2)
-    
-_The initial source for the model's creation came from the document of Z. Qawaqneh et al.: "Deep Convolutional Neural Network for Age Estimation based on VGG-Face Model". However, our research has led us to significant improvements in the CNN model, allowing us to estimate the age of a person outperforming the state-of-the-art results in terms of the exact accuracy and for 1-off accuracy._
+- Every OS/Python cell installs the built wheel with `--only-binary=:all:`
+  and runs prediction, including the compatibility corpus.
+- The `glibc-floor` job additionally installs and runs inside the exact
+  `manylinux_2_28` container images ONNX Runtime and `dlib-bin` build their
+  wheels against, on x86-64 and ARM64 — the only jobs that test the
+  advertised **glibc 2.28** floor itself; the Linux cells above run on
+  whatever newer glibc the `ubuntu-latest`/`ubuntu-24.04-arm` runner images
+  ship.
+- Prediction needing no network access is verified by actually blocking
+  outbound access (an unprivileged network namespace) on Linux only,
+  best-effort; Windows and macOS run the same smoke test without a network
+  block, which shows it doesn't happen to need one but isn't proof it
+  couldn't.
 
-_This model is thus an age predictor leveraging a ResNet-10 architecture and trained using a private dataset of about 110k different labelled images. During the training, we used an optimization and data augmentation pipeline and considered several sizes for the entry image._
+The package is *Python-only* in the sense that there is no project C++
+extension or build step left for you to run — but NumPy, Pillow, ONNX
+Runtime, and `dlib-bin` still ship native code in their own wheels, the same
+way most numerical Python packages do. This is not a claim that the
+dependency tree is entirely free of compiled code; see
+[PR-8](https://github.com/mowshon/age-and-gender/blob/master/spec/PR-8.md) for the conditional, currently unimplemented follow-up
+that investigates removing the dlib dependency itself.
 
-_This age predictor model is provided for free by Cydral Technology and is licensed under the Creative Commons Zero v1.0 Universal._
-    
-3. **dnn_gender_classifier_v1.dat.bz2** [Download](https://github.com/davisking/dlib-models/raw/master/gender-classifier/dnn_gender_classifier_v1.dat.bz2)
-
-_This model is a gender classifier trained using a private dataset of about 200k different face images and was generated according to the network definition and settings given in [Minimalistic CNN-based ensemble model for gender prediction from face images](http://www.eurecom.fr/fr/publication/4768/download/mm-publi-4768.pdf). Even if the dataset used for the training is different from that used by G. Antipov et al, the classification results on the LFW evaluation are similar overall (± 97.3%). To take up the authors' proposal to join the results of three networks, a simplification was made by finally presenting RGB images, thus simulating three "grayscale" networks via the three image planes. Better results could be probably obtained with a more complex and deeper network, but the performance of the classification is nevertheless surprising compared to the simplicity of the network used and thus its very small size._
-
-_This gender model is provided for free by Cydral Technology and is licensed under the Creative Commons Zero v1.0 Universal._
-    
-4. Unpack the `*.bz2` archives, you need only the `.dat` file.
-
-## Folder structure
-
-```
-test_example
--- shape_predictor_5_face_landmarks.dat
--- dnn_age_predictor_v1.dat
--- dnn_gender_classifier_v1.dat
--- test-image.jpg
--- example.py
-```
-
-# Example
+## Quick example
 
 ```python
 from age_and_gender import AgeAndGender
 from PIL import Image
 
-data.load_shape_predictor('shape_predictor_5_face_landmarks.dat')
-data.load_dnn_gender_classifier('dnn_gender_classifier_v1.dat')
-data.load_dnn_age_predictor('dnn_age_predictor_v1.dat')
+predictor = AgeAndGender()
 
-image = Image.open('test-image.jpg').convert("RGB")
-result = data.predict(image)
+with Image.open("photo.jpg") as image:
+    # The model only accepts RGB; convert explicitly rather than relying on
+    # however the source file happens to be encoded.
+    results = predictor.predict(image.convert("RGB"))
 
-print(result)
+print(results)
 ```
-
-Result:
-
-```
-[{'age': {'confidence': 85, 'value': 26},
-  'face': [414, 265, 504, 355],
-  'gender': {'confidence': 100, 'value': 'female'}},
- {'age': {'confidence': 58, 'value': 62},
-  'face': [223, 199, 330, 307],
-  'gender': {'confidence': 99, 'value': 'female'}},
- {'age': {'confidence': 73, 'value': 19},
-  'face': [593, 128, 700, 235],
-  'gender': {'confidence': 99, 'value': 'male'}},
- {'age': {'confidence': 50, 'value': 24},
-  'face': [342, 534, 450, 641],
-  'gender': {'confidence': 100, 'value': 'female'}},
- {'age': {'confidence': 92, 'value': 61},
-  'face': [782, 116, 872, 206],
-  'gender': {'confidence': 99, 'value': 'male'}}]
-```
-
-### Examples of determining the gender and age of people from the image
-Code: https://github.com/mowshon/age-and-gender/tree/master/example
-
-# How to increase efficiency with [face_recognition](https://github.com/ageitgey/face_recognition) ?
-
-The module will try to determine where the faces of people are on the image. But, it is better for us to provide a variable with people's faces using the library [face_recognition](https://github.com/ageitgey/face_recognition) and method `face_locations()`.
-
-```
-python -m pip install numpy --user
-python -m pip install face_recognition --user
-```
-
-Code:
 
 ```python
-from age_and_gender import *
-from PIL import Image
-import face_recognition
-import numpy
-
-
-data = AgeAndGender()
-data.load_shape_predictor('models/shape_predictor_5_face_landmarks.dat')
-data.load_dnn_gender_classifier('models/dnn_gender_classifier_v1.dat')
-data.load_dnn_age_predictor('models/dnn_age_predictor_v1.dat')
-
-filename = 'test-image-2.jpg'
-
-img = Image.open(filename).convert("RGB")
-face_bounding_boxes = face_recognition.face_locations(
-    numpy.asarray(img),  # Convert to numpy array
-    model='hog'  # 'hog' for CPU | 'cnn' for GPU (NVIDIA with CUDA)
-)
-
-result = data.predict(img, face_bounding_boxes)
+[
+    {
+        "gender": {"value": "female", "confidence": 100},
+        "age": {"value": 26, "confidence": 84},
+        "face": [419, 266, 506, 352],
+    },
+    # ... one dictionary per detected face, in detection order
+]
 ```
 
-## Module `age-and-gender` without `face_recognition`
+`face` is `[left, top, right, bottom]`, inclusive pixel coordinates. An image
+with no detected faces returns `[]`. Full runnable versions of the examples
+below live in [`example/`](https://github.com/mowshon/age-and-gender/tree/master/example/).
 
-![img](https://raw.githubusercontent.com/mowshon/age-and-gender/master/example/result-2-default.jpg)
+### NumPy array input
 
-## Module `age-and-gender` with `face_recognition` and `face_bounding_boxes`
+`predict()` also accepts an `[H, W, 3]` uint8 RGB array directly, instead of a
+`PIL.Image.Image`:
 
-![img](https://raw.githubusercontent.com/mowshon/age-and-gender/master/example/result-2.jpg)
+```python
+import numpy as np
 
-**Full example of code**: https://github.com/mowshon/age-and-gender/blob/master/example/example-with-face-recognition.py
+array = np.asarray(image.convert("RGB"))
+results = predictor.predict(array)
+```
 
+### Explicit face boxes
 
+Pass `face_bounding_boxes` to skip detection and score specific regions
+instead — for example, boxes from another face detector. Boxes use
+`(top, right, bottom, left)`, matching the
+[`face_recognition`](https://github.com/ageitgey/face_recognition) library's
+`face_locations()` convention (not installed by this package; see below), and
+are used exactly as given, including duplicates or coordinates that fall
+outside the image:
 
-# Changelog
+```python
+results = predictor.predict(
+    image.convert("RGB"),
+    face_bounding_boxes=[
+        (266, 506, 352, 419),  # top, right, bottom, left
+    ],
+)
+```
 
-**Version 1.0.1**
-- The method `predict(pillow_img)` now require a PIL.Image object. Thanks to [@arrufat](https://github.com/arrufat) for the [piece of code](https://github.com/arrufat/wallyfinder/blob/2a3ddc1af2b676ad434574fecd9be0004c0fcc23/src/wallyfinder.cpp#L8-L42) that successfully performs the matrix conversion.
-- The method `predict(pillow_img, face_bounding_boxes)` takes another argument `face_bounding_boxes` with a list of faces in the image. Check out this example. 
-- If the method `predict(pillow_img)` does not get the second argument `face_bounding_boxes` with a list of faces, then the module will try to find the faces in the image itself.
+Omitting `face_bounding_boxes`, or passing `None` or an empty sequence, runs
+the bundled face detector.
 
-**Version 1.0.0**
-- Initial commit and code
+### Reusing one predictor
+
+Constructing `AgeAndGender()` does no I/O; models are loaded lazily on first
+use and then kept in memory. Build one instance and reuse it across images
+rather than constructing a new one per call:
+
+```python
+predictor = AgeAndGender()
+for path in image_paths:
+    with Image.open(path) as image:
+        print(predictor.predict(image.convert("RGB")))
+```
+
+Calls on one instance are thread-safe (serialized by an internal lock).
+Independent instances — one per worker thread or process — avoid that
+serialization entirely, at the cost of each holding its own copy of the
+loaded models.
+
+### Using a different detector
+
+The bundled dlib HOG detector is adequate for most images, but any detector
+that returns `(top, right, bottom, left)` boxes can supply
+`face_bounding_boxes` instead — for example,
+[`face_recognition`](https://github.com/ageitgey/face_recognition)'s
+`face_locations()`, which uses that exact convention.
+
+**This package does not install, require, or recommend `face_recognition`.**
+Its declared `dlib` requirement is satisfied by the official source-only
+`dlib` distribution, not the `dlib-bin` wheels this package uses — installing
+both risks a source build (the compiler requirement this package exists to
+avoid) and a module conflict. If you already depend on `face_recognition` for
+an unrelated reason and want to reuse its detector, see
+[`example/example-with-face-recognition.py`](https://github.com/mowshon/age-and-gender/blob/master/example/example-with-face-recognition.py),
+which documents that trade-off at the top of the file; installing it in a
+separate virtual environment from this package avoids the conflict entirely.
+
+## Bundled and custom models
+
+`AgeAndGender()` uses the age, gender, and landmark models installed with the
+package — nothing to download. To use different models instead:
+
+```python
+predictor = AgeAndGender()
+predictor.load_shape_predictor("path/to/shape_predictor_5_face_landmarks.dat")
+```
+
+`load_shape_predictor` loads any compatible dlib five-point `.dat` file
+directly. The neural loaders are different: `load_dnn_age_predictor` and
+`load_dnn_gender_classifier` accept an `.onnx` file from a *complete model
+bundle directory* — one with a `manifest.json` that names it for that task and
+also names a shape predictor, alongside the other task's `.onnx` file — **not**
+the original `dnn_age_predictor_v1.dat`/`dnn_gender_classifier_v1.dat` files.
+Those are a proprietary dlib serialization format with no runtime ONNX reader;
+there is no way to load one directly, by design.
+
+```python
+predictor.load_dnn_age_predictor("path/to/bundle/age-v1.onnx")
+```
+
+For a whole bundle at once, use `AgeAndGender.from_model_dir("path/to/bundle")`,
+which validates every model immediately instead of on first use. Loading is
+purely structural — the manifest's declared shape, dtype, and normalization
+are checked, not the file's hash — so any bundle built to that contract works,
+regardless of where its weights came from.
+
+**Converting a different trained network is not currently automated.** The
+maintainer pipeline in [`tools/conversion`](https://github.com/mowshon/age-and-gender/blob/master/tools/conversion/README.md)
+converts *this project's own* two original dlib weight files specifically: its
+`build_onnx.py` step checks the input `.dat` files against their known SHA-256
+hashes and refuses anything else, and its raw output is not yet a loadable
+bundle until a follow-up step (`build_bundle.py`) adds a shape predictor to
+the manifest. Building a bundle for genuinely different weights means
+hand-authoring an `.onnx` graph and a `manifest.json` that matches the
+documented contract (task, tensor shape/dtype, normalization, and label
+order); the tooling above is a worked example of that contract, not a
+converter for arbitrary input.
+
+## Migrating from 1.x
+
+| | 1.x | 2.0 |
+| --- | --- | --- |
+| Install | `git clone` + `python setup.py install` (needs CMake, a C++ compiler, and X11/JPEG/PNG dev headers) | `pip install age-and-gender` (wheels only) |
+| Models | Download three `.dat` files yourself and load them by path | Bundled with the package; load automatically |
+| `AgeAndGender()` | Needed all three `load_*` calls before `predict()` would work | Works immediately; `load_*` methods are optional overrides |
+| `load_dnn_age_predictor`/`load_dnn_gender_classifier` | Accepted the original dlib `.dat` files | Accept a converted `.onnx` file + manifest only (see above) |
+| `load_shape_predictor` | Accepted a dlib `.dat` file | Unchanged |
+| `predict()` | Same signature, same result schema, same box convention | Unchanged |
+| Supported Python | 2.7, 3.4–3.8 (per the old classifiers) | 3.12, 3.13, 3.14 |
+
+`predict()`'s inputs, box convention, and result dictionaries are unchanged;
+existing calling code does not need to change, only how the package is
+installed and how a *custom* model would be loaded.
+
+### What "same results" means
+
+The age and gender networks are the original trained weights, converted to
+ONNX rather than retrained; detection, landmarks, and chip alignment run
+through the same dlib algorithms as 1.x, via the `dlib-bin` wheel instead of
+a compiled extension. This package's test suite requires exact agreement
+with the original C++ implementation — face count, order, rectangles, the
+integer age, the gender string, and the integer confidences — on a frozen
+compatibility corpus, not just "close enough" agreement. It is a tested
+release contract on that corpus, not a claim of bit-identical floating point
+on every possible image, CPU, or execution provider: a probability-to-integer
+boundary (a rounded age, a floored confidence percentage) can in principle
+land differently for an image this project has not measured. A change that
+fails that exact-agreement gate blocks release rather than shipping with a
+weakened guarantee. See `spec/README.md`'s "Shared acceptance contract" for
+the full, precise wording.
+
+## Performance
+
+The Python runtime is faster than the original compiled extension on every
+measured case — the old code copied the whole input image and both neural
+network subnets on *every* `predict()` call, which this package's persistent
+ONNX Runtime sessions avoid entirely:
+
+| Case | Faces | Legacy | 2.0 | Change |
+| --- | ---: | ---: | ---: | ---: |
+| Single explicit box | 1 | 46.28 ms | 4.80 ms | -90% |
+| Detected | 2 | 116.35 ms | 28.61 ms | -75% |
+| Detected | 5 | 325.18 ms | 82.77 ms | -75% |
+
+Full methodology, machine caveats, and additional measurements (batch-size
+sweep, cold start, concurrency) are in [`benchmarks/README.md`](https://github.com/mowshon/age-and-gender/blob/master/benchmarks/README.md)
+and [`benchmarks/report-pr6.md`](https://github.com/mowshon/age-and-gender/blob/master/benchmarks/report-pr6.md); raw data is in
+[`benchmarks/results/`](https://github.com/mowshon/age-and-gender/tree/master/benchmarks/results/). These are one development
+machine's numbers, reported as reproducible relative comparisons, not a
+certified benchmark on dedicated hardware.
+
+## Model attributions and licenses
+
+This project's own code is MIT-licensed; see [`LICENSE`](https://github.com/mowshon/age-and-gender/blob/master/LICENSE). The
+bundled model weights are third-party and carry their own notices, reproduced
+in [`src/age_and_gender/models/notices/`](https://github.com/mowshon/age-and-gender/tree/master/src/age_and_gender/models/notices/):
+
+- The age and gender network weights were contributed by **Cydral
+  Technology** to [`davisking/dlib-models`](https://github.com/davisking/dlib-models)
+  and dedicated to the public domain under
+  [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). This
+  package ships them converted to ONNX; the weights themselves are
+  unchanged.
+- The five-point face landmark model (`shape_predictor_5_face_landmarks.dat`)
+  is redistributed unchanged from the same project, by Davis E. King, also
+  under CC0 1.0.
+
+## Development
+
+See [`AGENTS.md`](https://github.com/mowshon/age-and-gender/blob/master/AGENTS.md) for the project's development environment, and
+[`spec/README.md`](https://github.com/mowshon/age-and-gender/blob/master/spec/README.md) for the full migration specification this
+package was built against, including the acceptance contract that "same
+results" is tested against.
+
+```bash
+venv/bin/python -m pytest
+venv/bin/python -m ruff check .
+```
+
+Maintainer-only tooling — the historical C++ reference oracle, the ONNX
+conversion pipeline, and the frozen extension source kept for provenance —
+lives under [`tools/`](https://github.com/mowshon/age-and-gender/tree/master/tools/) and is documented there; none of it is part of
+the published package's build or runtime.
+
+## Changelog
+
+**2.0.0**
+- Rebuilt as a pure Python package: no CMake, no C++ compiler, no vendored
+  dlib source in the install path. The age and gender networks now run
+  through ONNX Runtime; detection, landmarks, and alignment use the
+  [`dlib-bin`](https://pypi.org/project/dlib-bin/) wheel.
+- Models are bundled with the package; no manual download.
+- `load_dnn_age_predictor`/`load_dnn_gender_classifier` now accept converted
+  `.onnx` bundles instead of the original dlib `.dat` files (see
+  "Migrating from 1.x" above).
+- Added `AgeAndGender.from_model_dir()` for loading a complete custom model
+  bundle.
+- `predict()`'s inputs, box convention, and result schema are unchanged from
+  1.x.
+
+**1.0.1**
+- `predict(pillow_img)` requires a `PIL.Image` object.
+- `predict(pillow_img, face_bounding_boxes)` accepts an optional list of
+  face boxes; omitting it runs detection.
+
+**1.0.0**
+- Initial release.

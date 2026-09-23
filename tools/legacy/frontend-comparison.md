@@ -98,7 +98,7 @@ auto-detection, explicit boxes (reversed order, a duplicate, one out-of-frame),
 and a no-face image, but not the 30-image/100-face corpus `spec/PR-1.md` and
 `spec/INVESTIGATION.md` describe as deferred evaluation evidence.
 `tools/legacy/README.md`'s "Current fixture scope" section already explains why
-that corpus is not assembled from the vendored `libs/dlib/examples/faces/`
+that corpus is not assembled from the vendored `tools/vendor/dlib/examples/faces/`
 photographs: their redistribution rights are unclear, and README screenshots or
 replacement-runtime output must not be promoted into goldens. Widening the
 corpus with independently licensed images stays release-hardening work (PR-7),

@@ -1,0 +1,133 @@
+name: Release
+
+# Triggers on a `v*` tag push, or manually for a dry run against TestPyPI
+# without cutting a real tag. Publishing itself always needs the explicit
+# `confirm: publish` input, so a routine `workflow_dispatch` run only builds
+# and verifies the artifacts.
+#
+# One-time maintainer setup this workflow assumes and does not itself do:
+#   - A PyPI trusted publisher configured for this repository/workflow (and
+#     likewise on TestPyPI), so no API token is stored as a secret.
+#   - Two GitHub Environments, `testpypi` and `pypi`; give `pypi` required
+#     reviewers so a human approves every real publish.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "publish" to actually publish once the build passes; anything else only builds and verifies.'
+        required: false
+        default: ""
+
+jobs:
+  # The full platform/Python matrix, wheel build, install-smoke (including
+  # the glibc floor and the ordinary `pip install age-and-gender` command),
+  # and maintainer-tooling check — the same gate every PR to master has to
+  # pass. A tag push does not otherwise trigger ci.yml (its own triggers are
+  # branch pushes and pull requests), so calling it here is what makes a
+  # release actually depend on the full matrix, not just this workflow's own
+  # single-platform build.
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  verify-release:
+    name: Verify tag/version agreement
+    needs: ci
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: age-and-gender-dist
+          path: dist
+      # Read from the artifact ci.yml already built and tested, rather than
+      # installing the package again just to import its __version__.
+      - id: version
+        run: |
+          set -eu
+          wheel=$(ls dist/*.whl)
+          version=$(basename "$wheel" | cut -d- -f2)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Tag/version agreement
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -eu
+          tag="${GITHUB_REF#refs/tags/v}"
+          if [ "$tag" != "${{ steps.version.outputs.version }}" ]; then
+            echo "::error::tag v$tag does not match package version ${{ steps.version.outputs.version }}"
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: age-and-gender-release-dist
+          path: dist/
+          retention-days: 30
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: verify-release
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.confirm == 'publish'
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: age-and-gender-release-dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  verify-testpypi:
+    name: Install by explicit version from TestPyPI
+    needs: [verify-release, publish-testpypi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # TestPyPI does not mirror ordinary dependencies, so runtime
+      # dependencies (numpy, onnxruntime, dlib-bin, Pillow) still resolve
+      # from the real index; only the package itself comes from staging, by
+      # the exact version this run just published, per spec/PR-7.md's
+      # "for release staging, use the candidate artifact index with explicit
+      # version."
+      - name: Wait for the package to become installable
+        run: |
+          set -eu
+          version="${{ needs.verify-release.outputs.version }}"
+          for attempt in $(seq 1 10); do
+            if python -m pip install --no-cache-dir \
+                --index-url https://test.pypi.org/simple/ \
+                --extra-index-url https://pypi.org/simple/ \
+                "age-and-gender==$version"; then
+              exit 0
+            fi
+            echo "not yet available on TestPyPI, retrying in 30s ($attempt/10)"
+            sleep 30
+          done
+          echo "::error::age-and-gender==$version never became installable from TestPyPI"
+          exit 1
+      - run: python -m pip check
+      - name: Offline smoke test against the TestPyPI install
+        run: python tools/ci/smoke_install.py
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: verify-release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: age-and-gender-release-dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1

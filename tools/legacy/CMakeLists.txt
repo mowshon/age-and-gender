@@ -9,12 +9,12 @@ set(ORACLE_CONFIG_FLAGS "${CMAKE_CXX_FLAGS_${ORACLE_BUILD_TYPE_UPPER}}")
 add_executable(
   age_and_gender_legacy_oracle
   oracle.cpp
-  ../../libs/dlib/dlib/all/source.cpp
+  ../vendor/dlib/dlib/all/source.cpp
 )
 
 target_include_directories(
   age_and_gender_legacy_oracle
-  PRIVATE ../../libs/dlib
+  PRIVATE ../vendor/dlib
 )
 target_compile_features(age_and_gender_legacy_oracle PRIVATE cxx_std_14)
 target_compile_definitions(

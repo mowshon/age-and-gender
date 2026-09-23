@@ -7,17 +7,17 @@ find_package(Threads REQUIRED)
 add_executable(
   age_and_gender_export_dlib
   export_dlib.cpp
-  ../../libs/dlib/dlib/all/source.cpp
+  ../vendor/dlib/dlib/all/source.cpp
 )
 
 add_executable(
   age_and_gender_probe_dlib
   probe_dlib.cpp
-  ../../libs/dlib/dlib/all/source.cpp
+  ../vendor/dlib/dlib/all/source.cpp
 )
 
-target_include_directories(age_and_gender_export_dlib PRIVATE ../../libs/dlib)
-target_include_directories(age_and_gender_probe_dlib PRIVATE ../../libs/dlib)
+target_include_directories(age_and_gender_export_dlib PRIVATE ../vendor/dlib)
+target_include_directories(age_and_gender_probe_dlib PRIVATE ../vendor/dlib)
 target_compile_features(age_and_gender_export_dlib PRIVATE cxx_std_14)
 target_compile_features(age_and_gender_probe_dlib PRIVATE cxx_std_14)
 target_compile_definitions(age_and_gender_export_dlib PRIVATE DLIB_NO_GUI_SUPPORT)
