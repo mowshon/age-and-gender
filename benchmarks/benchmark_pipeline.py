@@ -58,7 +58,7 @@ from age_and_gender._postprocess import face_predictions  # noqa: E402
 SCHEMA_VERSION = 1
 TEST_IMAGE = ROOT / "example/test-image.jpg"  # 5 faces, detected
 TEST_IMAGE_2 = ROOT / "example/test-image-2.jpg"  # 2 faces, detected
-NO_FACE_IMAGE = ROOT / "libs/dlib/examples/faces/dogs.jpg"  # 0 faces
+NO_FACE_IMAGE = ROOT / "tools/vendor/dlib/examples/faces/dogs.jpg"  # 0 faces
 # spec/INVESTIGATION.md's frozen reference boxes for test-image.jpg, [L,T,R,B].
 SINGLE_FACE_BOX_LTRB = [419, 266, 506, 352]
 LEGACY_RESULTS_DIR = ROOT / "benchmarks/results"

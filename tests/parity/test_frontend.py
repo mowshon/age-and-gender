@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def image_available(document: GoldenDocument) -> bool:
     """Whether the document's source image exists in this checkout/sdist.
 
-    ``dogs.golden.json`` sources from ``libs/dlib/examples/faces/dogs.jpg``,
+    ``dogs.golden.json`` sources from ``tools/vendor/dlib/examples/faces/dogs.jpg``,
     which is deliberately not part of the sdist (its manifest entry notes it
     "must not be redistributed separately"; see tools/legacy/README.md). Tests
     that need a document's pixels skip it, rather than fail, when its image is

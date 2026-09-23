@@ -156,6 +156,26 @@ print(json.dumps({
 """
 
 
+# spec/PR-7.md: "Model loading must not write into site-packages." Zero
+# configuration, one prediction, nothing else: any write attempt into the
+# read-only package directory this program is run against would surface as an
+# OSError/PermissionError here rather than as a passing, silently-ignored call.
+READ_ONLY_CHILD_PROGRAM = """
+import json, sys
+from pathlib import Path
+
+from PIL import Image
+
+from age_and_gender import AgeAndGender
+
+image_path = Path(sys.argv[1])
+predictor = AgeAndGender()
+with Image.open(image_path) as image:
+    results = predictor.predict(image.convert("RGB"))
+print(json.dumps({"results": results}))
+"""
+
+
 def _run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command,
@@ -447,14 +467,14 @@ class PackagedDistributionTests(unittest.TestCase):
         self.assertNotIn(str(ROOT), self.output["cwd"])
 
     def test_no_checkout_source_is_on_the_installed_runtime_path(self) -> None:
-        """Neither the package sources, libs/, nor the CMake build tree is reachable.
+        """Neither the package sources, tools/, nor the CMake build tree is reachable.
 
         The project environment's site-packages is under the checkout and is
         deliberately allowed: it is how this test supplies NumPy and ONNX
         Runtime without an index.
         """
         dependencies = str(Path(sysconfig.get_paths()["purelib"]).resolve())
-        forbidden = [str(ROOT), *(str(ROOT / name) for name in ("src", "libs", "build"))]
+        forbidden = [str(ROOT), *(str(ROOT / name) for name in ("src", "tools", "build"))]
         for entry in self.output["sys_path"]:
             resolved = str(Path(entry).resolve())
             if resolved == dependencies or resolved.startswith(f"{dependencies}{os.sep}"):
@@ -497,6 +517,49 @@ class PackagedDistributionTests(unittest.TestCase):
         expected = [face.result for face in golden_images()["test-image.golden.json"]]
         self.assertEqual(self.api_output["positional_results"], expected)
         self.assertEqual(self.api_output["keyword_results"], expected)
+
+    @unittest.skipIf(
+        os.name == "nt",
+        "chmod does not model a read-only directory on Windows the way it does on POSIX",
+    )
+    def test_predicts_with_a_read_only_installed_package_directory(self) -> None:
+        """spec/PR-7.md: "Model loading must not write into site-packages."
+
+        Installs into its own environment, separate from the class-shared one
+        every other test in this module reads, so making it read-only cannot
+        affect any other test's fixtures or their cleanup.
+        """
+        with tempfile.TemporaryDirectory() as workspace_name:
+            workspace = Path(workspace_name)
+            python = self._install(workspace / "env", self.wheel)
+            locate = "import age_and_gender, os; print(os.path.dirname(age_and_gender.__file__))"
+            package_dir = Path(_run([str(python), "-c", locate]).stdout.strip())
+            self.assertTrue(package_dir.is_dir())
+            try:
+                self._chmod_tree_read_only(package_dir)
+                sandbox = workspace / "elsewhere-read-only"
+                sandbox.mkdir()
+                image_path = sandbox / "test-image.jpg"
+                image_path.write_bytes((ROOT / "example/test-image.jpg").read_bytes())
+                program = sandbox / "run_read_only.py"
+                program.write_text(READ_ONLY_CHILD_PROGRAM, encoding="utf-8")
+                output = self._run_isolated(python, sandbox, program, str(image_path))
+            finally:
+                # Restore write permissions so TemporaryDirectory cleanup, and
+                # this environment's own removal above, can delete the files.
+                self._chmod_tree_writable(package_dir)
+            expected = [face.result for face in golden_images()["test-image.golden.json"]]
+            self.assertEqual(output["results"], expected)
+
+    @staticmethod
+    def _chmod_tree_read_only(root: Path) -> None:
+        for path in [root, *root.rglob("*")]:
+            path.chmod(0o555 if path.is_dir() else 0o444)
+
+    @staticmethod
+    def _chmod_tree_writable(root: Path) -> None:
+        for path in [root, *root.rglob("*")]:
+            path.chmod(0o755 if path.is_dir() else 0o644)
 
 
 if __name__ == "__main__":

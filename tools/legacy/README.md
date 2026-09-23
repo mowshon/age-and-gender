@@ -102,10 +102,29 @@ out-of-frame case is generated with:
 Build the original extension source in the same historical environment, then
 compare its public dictionaries with the standalone report. The reference build
 disables dlib's unused JPEG/PNG loaders so those development headers are not part
-of the historical lane; `src/main.cpp` always receives decoded NumPy bytes.
+of the historical lane; `main.cpp` always receives decoded NumPy bytes.
+
+**PR-7 relocated this recipe.** `original-extension/` in this directory holds
+the repository's former root `CMakeLists.txt`, `setup.py`, and `src/main.cpp`
+byte-for-byte unchanged — `CMakeLists.txt`'s content still has to match the
+`root_cmake_sha256` every frozen golden in `tests/fixtures/legacy/` already
+recorded, so it is kept exactly as it was rather than edited to point at the
+new vendor layout below. It also still names `libs/dlib` and `libs/pybind11`
+as relative subdirectories of its own folder, which no longer exist there:
+`tools/vendor/dlib` and this directory's own frozen `pybind11/` copy replaced
+`libs/` at the repository root once `tools/legacy/oracle.cpp` took over as the
+ongoing parity reference (see spec/PR-7.md). Reconstruct the expected layout
+with symlinks — cheap, and it leaves the frozen sources untouched — before
+configuring:
 
 ```bash
-cmake -S . -B /tmp/age-gender-extension \
+mkdir -p tools/legacy/original-extension/libs
+ln -s ../../../vendor/dlib tools/legacy/original-extension/libs/dlib
+ln -s ../pybind11 tools/legacy/original-extension/libs/pybind11
+```
+
+```bash
+cmake -S tools/legacy/original-extension -B /tmp/age-gender-extension \
   -DPYTHON_EXECUTABLE=/tmp/age-gender-legacy/bin/python \
   -DCMAKE_LIBRARY_OUTPUT_DIRECTORY=/tmp/age-gender-extension/lib \
   -DAGE_GENDER_IMAGE_IO=OFF -DCMAKE_BUILD_TYPE=Release
@@ -115,8 +134,17 @@ PYTHONPATH=/tmp/age-gender-extension/lib \
   build/reference/test-image/oracle-report.json --models example/models
 ```
 
+Remove `tools/legacy/original-extension/libs/` afterwards; it is a local,
+untracked reconstruction, not part of the checked-in tree. This build still
+needs the historical CPython 3.10 lane above — the vendored pybind11 2.5.0
+imports `distutils`, removed from the standard library in Python 3.12.
+
 This check intentionally compares only public output. Stage files come from the
-standalone oracle because the original pybind11 API does not expose them.
+standalone oracle because the original pybind11 API does not expose them. It
+was run once, during PR-1, to establish that the standalone oracle reproduces
+the real compiled extension; that result is what the frozen fixtures already
+encode; this section documents how to redo it from scratch, not a step that
+ordinary parity work needs to repeat.
 
 ## Current fixture scope
 
