@@ -113,6 +113,80 @@ Note that the instrumented graph used for validation pins `logits` as an extra
 output, which itself suppresses some fusion. The measurement is therefore of the
 instrumented graph, not exactly of the shipped one.
 
+`conversion-report.json`'s `onnxruntime` field records the version the report
+was actually generated with. Regenerate the report (rerun the command above)
+after upgrading the pinned `onnxruntime` dependency, rather than trusting a
+report captured under an older version; this file was last regenerated under
+`onnxruntime` 1.30.0 (the version PR-6's `benchmarks/benchmark_pipeline.py`
+also measured with), superseding an earlier capture under 1.23.0.
+
+## Thread-count investigation
+
+Version 1's `runtime` block also fixes single-threaded ONNX Runtime execution
+(`intra_op_num_threads`/`inter_op_num_threads`: 1). `validate_conversion.py`
+sweeps a second axis alongside the graph-optimization one above —
+`THREAD_CANDIDATES`/`SELECTED_THREAD_SETTING`, mirroring
+`OPTIMIZATION_LEVELS`/`SELECTED_SETTING` — running the same frozen-fixture,
+stage, and live synthetic-reference checks at each candidate
+`intra_op_num_threads` value, with the graph optimization level held at the
+shipped `disabled` setting. As checked in (`conversion-report.json`'s
+`thread_variants`/`thread_stages`):
+
+| Setting | Logits | Probabilities | Public results | Stage tensors |
+| --- | --- | --- | --- | --- |
+| `1x1` (shipped) | pass | pass | pass | pass |
+| `2x1` | pass | pass | pass | pass |
+| `4x1` | pass | pass | pass | pass |
+| `6x1` | pass | pass | pass | pass |
+
+Every candidate is bit-identical to `1x1` on the full validated corpus (frozen
+real chips, synthetic batches at sizes 1/2/7/32, and every exported stage
+tensor) — `ORT_DISABLE_ALL` keeps per-sample computation thread-count
+independent and only parallelizes across batch rows, so raising the thread
+count changes nothing PR-1's tolerances gate. This is the numerical half of
+the spec/PR-6.md thread investigation; the runtime shipped default is
+unchanged, and this alone would not be sufficient reason to change it. See the
+next paragraph.
+
+**Numerical parity is not the whole decision.** spec/PR-6.md separately
+requires comparing one-worker and multiple-worker scenarios "to avoid
+oversubscription": `AgeAndGender.predict()` serializes calls on *one*
+instance with an internal lock, so a single shared instance (what the
+existing `tests/integration/test_api.py::ConcurrencyTests` exercise) can never
+oversubscribe a CPU by itself — but this package explicitly supports multiple
+*independent* instances/processes, each with its own multi-threaded ONNX
+Runtime session, and that scenario can. `benchmarks/concurrency_benchmark.py`
+measures exactly that: real `AgeAndGender` instances, one to four running
+concurrently from independent threads, at each thread candidate, on 5- and
+32-face scenarios. Measured on this repository's development machine (AMD
+Ryzen 5 3600, 12 logical cores; see `benchmarks/report-pr6.md`'s thread/
+concurrency section for the full table and machine caveat):
+
+- One worker: raising `intra_op_num_threads` helps the 32-face scenario
+  (8.7 → ~11–12 calls/s from `1x1` to `4x1`/`6x1`) and is roughly flat or
+  slightly worse for the 5-face scenario.
+- Four independent concurrent workers: raising `intra_op_num_threads`
+  regresses both scenarios past `2x1` — 5-face throughput drops from 39.3
+  calls/s at `1x1` to 20.3 calls/s at `6x1`; 32-face throughput drops from a
+  `2x1` peak of 21.4 calls/s to 9.3 calls/s at `6x1`, below the `1x1` baseline
+  of 19.0.
+
+**Decision: the shipped default stays `1x1`.** A higher thread count is
+numerically safe in isolation but measurably regresses the concurrent-caller
+throughput this package is explicitly designed to support once more than one
+or two independent sessions run at once, for a single-worker gain that is
+modest end to end (detection, not the CNNs, dominates whole-image latency;
+see `benchmarks/report-pr6.md`). This mirrors how the graph-optimization
+rejections above are handled: a candidate that measurably regresses something
+this package's own contract cares about is documented and rejected here
+instead of silently left unmeasured, per spec/PR-6.md's "If parity permits no
+further numeric optimization, ship the simpler passing configuration with the
+measured report" — read together with its own oversubscription requirement,
+this is the same escape hatch applied to a throughput regression instead of a
+parity failure. `SUPPORTED_RUNTIME` in `_models.py`, the shipped
+`manifest.json` files, and this document's "Validated runtime setting" table
+above are unchanged.
+
 ## Stage comparison
 
 `probe_dlib.cpp` exports intermediate dlib tensors and `validate_conversion.py`

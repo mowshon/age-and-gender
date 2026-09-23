@@ -18,17 +18,23 @@ individually extracted* chips.
 
 from __future__ import annotations
 
+import math
 import unittest
+from pathlib import Path
 
 import numpy as np
+from PIL import Image
 
+from age_and_gender import AgeAndGender
+from age_and_gender._images import as_rgb_array
 from age_and_gender._inference import DEFAULT_MAX_BATCH_SIZE, InferenceEngine, NeuralNetwork
 from age_and_gender._models import bundled_models, load_bundle
 from age_and_gender._postprocess import face_predictions
 from tests.bundles import PACKAGE_MODELS
-from tests.golden import golden_faces
+from tests.golden import golden_documents, golden_faces
 
 PROBABILITY_TOLERANCE = {"atol": 1e-6, "rtol": 1e-4}
+ROOT = Path(__file__).resolve().parents[2]
 
 
 class DefaultBoundTests(unittest.TestCase):
@@ -49,6 +55,13 @@ class DefaultBoundTests(unittest.TestCase):
     def test_non_positive_bound_is_rejected(self) -> None:
         for invalid in (0, -1):
             with self.assertRaises(ValueError):
+                NeuralNetwork(bundled_models(), "gender", max_batch_size=invalid)
+
+    def test_non_integer_bound_is_rejected(self) -> None:
+        # 1.5 would fail confusingly deep inside range()/slicing; True is an
+        # int subclass that would silently become a batch size of 1.
+        for invalid in (1.5, True, "32", None):
+            with self.assertRaises(TypeError):
                 NeuralNetwork(bundled_models(), "gender", max_batch_size=invalid)
 
 
@@ -137,6 +150,54 @@ class ChunkingParityTests(unittest.TestCase):
         network._session.run = spy  # type: ignore[method-assign]
         network.probabilities(self.chips("gender")[:5])
         self.assertEqual(calls, [4, 1])
+
+
+class EndToEndChunkBoundaryTests(unittest.TestCase):
+    """The public ``AgeAndGender.predict()`` path at the chunk boundary.
+
+    The classes above chunk pre-extracted chips directly through
+    ``NeuralNetwork``/``face_predictions()``; a bug confined to how
+    ``api.py``'s ``predict()`` wires those pieces together (for example,
+    reusing the wrong extraction list, or breaking chunking's ordering
+    together with ``FaceFrontend.extract()``'s own ordering) would not
+    necessarily show up there. This drives the real public entry point at
+    face counts straddling ``DEFAULT_MAX_BATCH_SIZE`` (32) on both sides.
+    """
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.predictor = AgeAndGender()
+        document = next(
+            doc for doc in golden_documents() if doc.name == "explicit-boxes.golden.json"
+        )
+        with Image.open(ROOT / document.source_path) as image:
+            cls.image = as_rgb_array(image.convert("RGB"))
+        cls.boxes = document.input_boxes_trbl
+        cls.expected = [face.result for face in document.faces]
+        assert cls.boxes and len(cls.boxes) == len(cls.expected)
+
+    def _tile(self, count: int) -> tuple[list, list]:
+        """Repeat the golden explicit-box fixture out to exactly ``count`` faces.
+
+        Every repeated box is identical, and extraction has no cross-face
+        dependency (each face's landmarks/chips/network run only from its own
+        rectangle), so the expected result for a duplicated box is simply the
+        golden result duplicated in the same order.
+        """
+        repeats = math.ceil(count / len(self.boxes))
+        return (self.boxes * repeats)[:count], (self.expected * repeats)[:count]
+
+    def test_predict_matches_expected_at_chunk_boundaries(self) -> None:
+        for count in (
+            DEFAULT_MAX_BATCH_SIZE,
+            DEFAULT_MAX_BATCH_SIZE + 1,
+            DEFAULT_MAX_BATCH_SIZE * 2,
+            DEFAULT_MAX_BATCH_SIZE * 2 + 1,
+        ):
+            with self.subTest(faces=count):
+                boxes, expected = self._tile(count)
+                results = self.predictor.predict(self.image, boxes)
+                self.assertEqual(results, expected)
 
 
 class ChunkingResourceLifecycleTests(unittest.TestCase):

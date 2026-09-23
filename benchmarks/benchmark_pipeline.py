@@ -303,6 +303,38 @@ def measure_stages(predictor, warmup: int, iterations: int, repeats: int) -> dic
 # -- batch-size sweep ---------------------------------------------------
 
 
+def _observed_call_batch_sizes(network, chips: list) -> list[int]:
+    """Run ``network.probabilities(chips)`` once and record each underlying
+    ``session.run()`` call's batch size, by spying on the session directly.
+
+    ``NeuralNetwork.run()`` always makes exactly one ONNX Runtime call for
+    whatever tensor it is given; only ``probabilities()`` applies the bounded
+    chunking spec/PR-6.md asks for (see ``_inference.py``). Timing ``run()``
+    on a pre-built batch-64 tensor, as an earlier version of this function
+    did, therefore never exercised chunking at all — it measured one
+    unbounded batch-64 call and then *computed* a "chunked_calls" figure from
+    arithmetic rather than *observing* what chunking actually did. This helper
+    calls the real chunking entry point and returns the batch size of every
+    ONNX Runtime call it actually made, so the sweep below can report observed
+    behavior instead of an assumed one.
+    """
+    network.ensure_loaded()
+    session = network._session
+    original_run = session.run
+    sizes: list[int] = []
+
+    def spy(names, feed):
+        sizes.append(feed[network.spec.input_name].shape[0])
+        return original_run(names, feed)
+
+    session.run = spy  # type: ignore[method-assign]
+    try:
+        network.probabilities(chips)
+    finally:
+        session.run = original_run
+    return sizes
+
+
 def measure_batch_sweep(predictor, warmup: int, iterations: int, repeats: int) -> dict[str, Any]:
     engine = predictor._engine
     frontend = predictor._ensure_frontend()
@@ -316,14 +348,20 @@ def measure_batch_sweep(predictor, warmup: int, iterations: int, repeats: int) -
         network.ensure_loaded()
         sizes = {}
         for batch_size in (1, 2, 8, 32, 64):
-            tensor = prepare_batch([chip] * batch_size, network.spec)
+            chips = [chip] * batch_size
+            # Timed through the real chunking entry point (`probabilities()`),
+            # not the lower-level `run()`, so batch sizes above the chunk
+            # bound (currently only 64) are actually split here, not just
+            # timed as one oversized call.
             timing = time_case(
-                lambda t=tensor, n=network: n.run(t), warmup, iterations, repeats
+                lambda c=chips, n=network: n.probabilities(c), warmup, iterations, repeats
             )
             timing["faces_per_second"] = (
                 batch_size / (timing["median_ms"] / 1000.0) if timing["median_ms"] > 0 else None
             )
-            timing["chunked_calls"] = -(-batch_size // network.max_batch_size)
+            observed = _observed_call_batch_sizes(network, chips)
+            timing["chunked_calls"] = len(observed)
+            timing["observed_call_batch_sizes"] = observed
             sizes[str(batch_size)] = timing
         result[task] = sizes
     return result

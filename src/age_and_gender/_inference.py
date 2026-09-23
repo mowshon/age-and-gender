@@ -28,8 +28,14 @@ GRAPH_OPTIMIZATION_LEVELS: Final[dict[str, ort.GraphOptimizationLevel]] = {
 _PROBABILITY_SUM_TOLERANCE: Final = 1e-3
 
 # spec/PR-6.md requires bounding memory on high-face-count images rather than
-# handing ONNX Runtime one unbounded batch per call. 32 is not an arbitrary
-# round number: it is the largest batch size the conversion tooling and
+# handing ONNX Runtime one unbounded batch per call. This bounds the size of
+# each individual prepared tensor and ONNX Runtime call, not the caller's
+# total working set for one image: api.py's predict() still extracts and
+# retains every face's chips up front (chip extraction cannot itself be
+# batched; see _faces.py's module docstring), so total memory still scales
+# with face count regardless of this bound, just without ever building one
+# oversized tensor/call. 32 is not an arbitrary round number: it is the
+# largest batch size the conversion tooling and
 # tests/parity/test_converted_networks.py already validate numerically
 # (batch sizes 1, 2, 7, 32 in tools/conversion/validate_conversion.py), so
 # chunking at this boundary carries existing parity evidence rather than
@@ -92,6 +98,8 @@ class NeuralNetwork:
     def __init__(
         self, bundle: ModelBundle, task: Task, *, max_batch_size: int = DEFAULT_MAX_BATCH_SIZE
     ) -> None:
+        if isinstance(max_batch_size, bool) or not isinstance(max_batch_size, int):
+            raise TypeError(f"max_batch_size must be an int, got {type(max_batch_size).__name__}")
         if max_batch_size < 1:
             raise ValueError(f"max_batch_size must be positive, got {max_batch_size}")
         self._bundle = bundle

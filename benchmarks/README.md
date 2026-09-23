@@ -108,6 +108,36 @@ Both comparisons are old and new results on the same decoded RGB bytes, the
 same source weights, and the same machine, per spec/PR-6.md's "Benchmark
 first" requirement.
 
+## Concurrency benchmark
+
+`concurrency_benchmark.py` answers a different question than
+`benchmark_pipeline.py`: not "how fast is one session", but "does raising
+ONNX Runtime's `intra_op_num_threads` regress throughput once more than one
+*independent* session runs at the same time." `AgeAndGender.predict()`
+serializes calls on one shared instance with an internal lock (see `api.py`),
+so `tests/integration/test_api.py::ConcurrencyTests` — which share one
+instance — prove correctness under that lock, not oversubscription; they
+never have two independently multi-threaded ONNX Runtime sessions running at
+once. This script instead builds several independent `AgeAndGender` instances
+(each with its own session, the way independent worker threads or processes
+would) at each candidate thread count from
+`tools/conversion/validate_conversion.py`'s `THREAD_CANDIDATES`, and drives
+each one concurrently from its own thread:
+
+```bash
+venv/bin/python benchmarks/concurrency_benchmark.py \
+  --output benchmarks/results/concurrency-report.json
+```
+
+Each (thread setting, worker count, face count) cell is aggregate calls/second
+across all workers over a fixed wall-clock duration (`--duration`, default 2
+seconds), not a fixed iteration count, so adding workers does not multiply the
+run time. Pass `--quick` for a fast development sanity pass; those numbers are
+not a report claim, the same convention as `benchmark_pipeline.py --quick`.
+See `tools/conversion/README.md`'s "Thread-count investigation" section and
+`report-pr6.md`'s thread/concurrency section for the checked-in results and
+the resulting decision (the shipped default stays single-threaded).
+
 ## Machine caveat
 
 spec/PR-6.md's acceptance criteria are meant to run "on the named reference
@@ -128,3 +158,5 @@ gate a release.
 - `python-pipeline-linux-x86_64-python313.json` — this PR's Python package
   report, `schema_version: 1` (this document + the section list above is the
   schema).
+- `concurrency-report.json` — `concurrency_benchmark.py`'s independent-session
+  thread/worker throughput sweep, `schema_version: 1`.
