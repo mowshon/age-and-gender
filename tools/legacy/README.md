@@ -131,3 +131,12 @@ A larger, independently licensed evaluation corpus is deferred to release
 hardening. It is not required to begin model conversion and must not be assembled
 from vendored photographs whose redistribution rights are unclear. Do not
 promote README screenshots or replacement-runtime output into goldens.
+
+## Frontend comparison (PR-4)
+
+`frontend-comparison.md` in this directory is the record that the Python
+`dlib-bin` frontend (`src/age_and_gender/_faces.py`) reproduces this fixture
+scope's detector rectangles, landmarks, and individually extracted chips
+exactly, and that the batching counterexample above still reproduces on the
+pinned wheel. Regenerate it with `tests/parity/test_frontend.py` whenever the
+pinned `dlib-bin` version changes.

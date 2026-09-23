@@ -19,6 +19,7 @@ class GoldenFace:
     image: str
     index: int
     rectangle: list[int]
+    landmarks: list[list[int]]
     gender_chip: np.ndarray
     age_chip: np.ndarray
     gender_input: np.ndarray
@@ -42,34 +43,69 @@ class GoldenFace:
         return self.age_probabilities if task == "age" else self.gender_probabilities
 
 
+@dataclass(frozen=True)
+class GoldenDocument:
+    """One frozen oracle run: its source image, box mode, and faces."""
+
+    name: str
+    source_path: str
+    source_sha256: str
+    rgb_sha256: str
+    size: tuple[int, int]
+    box_mode: str
+    input_boxes_trbl: list[list[int]]
+    faces: list[GoldenFace]
+
+
 def _array(face: dict[str, Any], key: str, dtype: str) -> np.ndarray:
     artifact = face["artifacts"][key]
     data = np.fromfile(FIXTURES / artifact["golden_path"], dtype=dtype)
     return data.reshape(artifact["shape"])
 
 
-def golden_images() -> dict[str, list[GoldenFace]]:
-    """Return every frozen image's faces, keyed by golden file name."""
-    images: dict[str, list[GoldenFace]] = {}
+def _faces(document_name: str, golden: dict[str, Any]) -> list[GoldenFace]:
+    return [
+        GoldenFace(
+            image=document_name,
+            index=index,
+            rectangle=list(face["rectangle"]),
+            landmarks=[list(point) for point in face["landmarks"]],
+            gender_chip=_array(face, "gender_chip", np.uint8),
+            age_chip=_array(face, "age_chip", np.uint8),
+            gender_input=_array(face, "gender_input", "<f4"),
+            age_input=_array(face, "age_input", "<f4"),
+            gender_probabilities=np.asarray(face["gender_probabilities"], dtype=np.float32),
+            age_probabilities=np.asarray(face["age_probabilities"], dtype=np.float32),
+            age_expectation=float(face["age_expectation"]),
+            result=face["result"],
+        )
+        for index, face in enumerate(golden["faces"])
+    ]
+
+
+def golden_documents() -> list[GoldenDocument]:
+    """Return every frozen oracle run, including its source image and box mode."""
+    documents = []
     for path in sorted(FIXTURES.glob("*.golden.json")):
         golden = json.loads(path.read_text(encoding="utf-8"))
-        images[path.name] = [
-            GoldenFace(
-                image=path.name,
-                index=index,
-                rectangle=list(face["rectangle"]),
-                gender_chip=_array(face, "gender_chip", np.uint8),
-                age_chip=_array(face, "age_chip", np.uint8),
-                gender_input=_array(face, "gender_input", "<f4"),
-                age_input=_array(face, "age_input", "<f4"),
-                gender_probabilities=np.asarray(face["gender_probabilities"], dtype=np.float32),
-                age_probabilities=np.asarray(face["age_probabilities"], dtype=np.float32),
-                age_expectation=float(face["age_expectation"]),
-                result=face["result"],
+        documents.append(
+            GoldenDocument(
+                name=path.name,
+                source_path=golden["input"]["source"],
+                source_sha256=golden["input"]["source_sha256"],
+                rgb_sha256=golden["input"]["rgb_sha256"],
+                size=tuple(golden["input"]["size"]),
+                box_mode=golden["box_mode"],
+                input_boxes_trbl=[list(box) for box in golden["input_boxes_trbl"]],
+                faces=_faces(path.name, golden),
             )
-            for index, face in enumerate(golden["faces"])
-        ]
-    return images
+        )
+    return documents
+
+
+def golden_images() -> dict[str, list[GoldenFace]]:
+    """Return every frozen image's faces, keyed by golden file name."""
+    return {document.name: document.faces for document in golden_documents()}
 
 
 def golden_faces() -> list[GoldenFace]:
