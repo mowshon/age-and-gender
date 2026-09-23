@@ -76,6 +76,46 @@ print(json.dumps({
 }))
 """
 
+# Unlike CHILD_PROGRAM above, this drives the real detector/landmark/alignment
+# path (age_and_gender._faces, backed by dlib) and Pillow decoding, starting
+# from a raw image rather than pre-extracted chips. CHILD_PROGRAM alone cannot
+# show the binary-only installed dlib-bin/Pillow wheels actually work: it never
+# imports either.
+FRONTEND_CHILD_PROGRAM = """
+import json, sys
+from pathlib import Path
+
+from PIL import Image
+
+import age_and_gender
+from age_and_gender._faces import FaceFrontend
+from age_and_gender._images import as_rgb_array
+from age_and_gender._inference import InferenceEngine
+from age_and_gender._models import bundled_models
+from age_and_gender._postprocess import face_predictions
+
+image_path = Path(sys.argv[1])
+bundle = bundled_models()
+frontend = FaceFrontend(bundle)
+engine = InferenceEngine(bundle)
+
+with Image.open(image_path) as image:
+    array = as_rgb_array(image.convert("RGB"))
+extractions = frontend.extract(array)
+
+results = face_predictions(
+    [extraction.rectangle for extraction in extractions],
+    engine.gender.probabilities([extraction.gender_chip for extraction in extractions]),
+    engine.age.probabilities([extraction.age_chip for extraction in extractions]),
+    labels=bundle.gender.labels,
+    age_weights=bundle.age.age_weights,
+)
+print(json.dumps({
+    "version": age_and_gender.__version__,
+    "results": results,
+}))
+"""
+
 
 def _run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
@@ -119,6 +159,7 @@ class PackagedDistributionTests(unittest.TestCase):
             cls.sdist_names = archive.getnames()
         cls.environment = cls._install(cls.workspace / "env", cls.wheel)
         cls.output = cls._infer(cls.environment)
+        cls.frontend_output = cls._infer_frontend(cls.environment)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -145,6 +186,26 @@ class PackagedDistributionTests(unittest.TestCase):
         return python
 
     @classmethod
+    def _run_isolated(cls, python: Path, sandbox: Path, program: Path, *args: str) -> dict:
+        """Run `program` with no compiler, no CMake, and no index reachable."""
+        empty_path = cls.workspace / "empty-path"
+        empty_path.mkdir(exist_ok=True)
+        environment = {
+            "HOME": str(cls.workspace),
+            "PATH": str(empty_path),
+            "PYTHONNOUSERSITE": "1",
+            "PIP_NO_INDEX": "1",
+        }
+        if "SYSTEMROOT" in os.environ:  # pragma: no cover - Windows only
+            environment["SYSTEMROOT"] = os.environ["SYSTEMROOT"]
+        completed = _run(
+            [str(python), str(program), *args],
+            cwd=str(sandbox),
+            env=environment,
+        )
+        return json.loads(completed.stdout)
+
+    @classmethod
     def _infer(cls, python: Path) -> dict:
         """Run chip inference from an unrelated directory with a minimal environment."""
         sandbox = cls.workspace / "elsewhere"
@@ -166,24 +227,25 @@ class PackagedDistributionTests(unittest.TestCase):
         request_path.write_text(json.dumps(request), encoding="utf-8")
         program = sandbox / "run_inference.py"
         program.write_text(CHILD_PROGRAM, encoding="utf-8")
-        empty_path = cls.workspace / "empty-path"
-        empty_path.mkdir()
-        environment = {
-            "HOME": str(cls.workspace),
-            # No compiler, no CMake, and no index: an installed wheel has to be
-            # self-sufficient.
-            "PATH": str(empty_path),
-            "PYTHONNOUSERSITE": "1",
-            "PIP_NO_INDEX": "1",
-        }
-        if "SYSTEMROOT" in os.environ:  # pragma: no cover - Windows only
-            environment["SYSTEMROOT"] = os.environ["SYSTEMROOT"]
-        completed = _run(
-            [str(python), str(program), str(request_path)],
-            cwd=str(sandbox),
-            env=environment,
-        )
-        return json.loads(completed.stdout)
+        return cls._run_isolated(python, sandbox, program, str(request_path))
+
+    @classmethod
+    def _infer_frontend(cls, python: Path) -> dict:
+        """Run detection, landmark alignment, and inference from a raw image.
+
+        Unlike `_infer`, this starts from JPEG bytes rather than pre-extracted
+        chips, so it is the only check that actually exercises the installed
+        dlib-bin/Pillow wheels from the binary-only install.
+        """
+        sandbox = cls.workspace / "elsewhere-frontend"
+        sandbox.mkdir()
+        # The image bytes are copied out of the checkout so the child reads
+        # nothing from the source tree except the wheel it has installed.
+        image_path = sandbox / "test-image.jpg"
+        image_path.write_bytes((ROOT / "example/test-image.jpg").read_bytes())
+        program = sandbox / "run_frontend.py"
+        program.write_text(FRONTEND_CHILD_PROGRAM, encoding="utf-8")
+        return cls._run_isolated(python, sandbox, program, str(image_path))
 
     def test_wheel_is_pure_python_and_has_no_native_extension(self) -> None:
         self.assertTrue(self.wheel.name.endswith("-py3-none-any.whl"), self.wheel.name)
@@ -213,6 +275,22 @@ class PackagedDistributionTests(unittest.TestCase):
         self.assertFalse(
             [name for name in self.sdist_names if "/libs/" in name or name.endswith("setup.py")],
             "the sdist must not ship the historical native build",
+        )
+
+    def test_source_distribution_carries_what_test_frontend_needs(self) -> None:
+        """tests/parity/test_frontend.py decodes these images to exercise the
+        real detector/landmark path; a sdist without them can't run the tests
+        it ships (github.com/mowshon/age-and-gender parity gap, fixed here).
+        """
+        stem = self.sdist.name[: -len(".tar.gz")]
+        for name in ("example/test-image.jpg", "example/test-image-2.jpg"):
+            self.assertIn(f"{stem}/{name}", self.sdist_names)
+        # example/models/ duplicates the legacy .dat files already bundled as
+        # ONNX/manifest resources; it must not be pulled in just to reach the
+        # two images above.
+        self.assertFalse(
+            [name for name in self.sdist_names if "/example/models/" in name],
+            "the sdist must not ship the legacy .dat duplicates under example/models/",
         )
 
     def test_source_distribution_resources_match_their_recorded_digests(self) -> None:
@@ -324,6 +402,14 @@ class PackagedDistributionTests(unittest.TestCase):
     def test_offline_inference_reproduces_the_frozen_results(self) -> None:
         expected = [face.result for face in golden_images()["test-image.golden.json"]]
         self.assertEqual(self.output["results"], expected)
+
+    def test_offline_frontend_reproduces_the_frozen_results_from_a_raw_image(self) -> None:
+        """The binary-only installed dlib-bin and Pillow wheels actually work:
+        detection, landmark prediction, and individual chip alignment all ran
+        in the child process, starting from JPEG bytes, not pre-extracted chips.
+        """
+        expected = [face.result for face in golden_images()["test-image.golden.json"]]
+        self.assertEqual(self.frontend_output["results"], expected)
 
 
 if __name__ == "__main__":
