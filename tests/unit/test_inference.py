@@ -7,10 +7,9 @@ from pathlib import Path
 
 import numpy as np
 
-from age_and_gender import _models
 from age_and_gender._inference import InferenceEngine, NeuralNetwork, prepare_batch
 from age_and_gender._models import bundled_models, load_bundle
-from tests.bundles import corrupt_bytes, full_bundle
+from tests.bundles import PACKAGE_MODELS, corrupt_bytes, full_bundle
 from tests.golden import golden_faces
 
 
@@ -114,16 +113,25 @@ class SessionLifecycleTests(unittest.TestCase):
             network.probabilities([self.face.gender_chip])
         self.assertIs(network._session, session)
 
-    def test_predictions_neither_reread_nor_rehash_the_model(self) -> None:
-        network = NeuralNetwork(self.bundle, "gender")
-        calls: list[int] = []
-        original = _models.digest_bytes
-        _models.digest_bytes = lambda payload: (calls.append(len(payload)), original(payload))[1]
-        try:
-            for _ in range(5):
-                network.probabilities([self.face.gender_chip])
-        finally:
-            _models.digest_bytes = original
+    def test_predictions_do_not_reread_the_model(self) -> None:
+        """`model_bytes()` is called once, at session creation, not per call.
+
+        Uses a fresh `load_bundle()` instance rather than the process-wide
+        cached `bundled_models()` singleton, so monkeypatching its
+        `model_bytes` method cannot leak into other tests.
+        """
+        bundle = load_bundle(PACKAGE_MODELS)
+        network = NeuralNetwork(bundle, "gender")
+        calls: list[str] = []
+        original = bundle.model_bytes
+
+        def spy(task: str) -> bytes:
+            calls.append(task)
+            return original(task)
+
+        bundle.model_bytes = spy  # type: ignore[method-assign]
+        for _ in range(5):
+            network.probabilities([self.face.gender_chip])
         self.assertEqual(len(calls), 1, "the weights were re-read during prediction")
 
     def test_zero_chips_never_build_a_session(self) -> None:

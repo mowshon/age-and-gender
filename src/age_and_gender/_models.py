@@ -1,18 +1,29 @@
-"""Bundled model resources, manifest validation, and legacy source mapping.
+"""Bundled model resources and manifest validation.
 
 A *bundle* is a directory holding ``manifest.json``, the two converted ONNX
-networks, the five-point landmark model, and their license notices. The package
-installs one such bundle; :func:`load_bundle` accepts an equivalent directory
-produced by the maintainer conversion tooling.
+networks, and the five-point landmark model. The package installs one such
+bundle; :func:`load_bundle` accepts any directory with a manifest in the same
+schema, whether produced by the maintainer conversion tooling or hand-authored
+for a custom model.
 
 Nothing here is executed at import time: resolving the installed bundle reads
-the manifest, and model bytes are read and hash-checked the first time a network
-is actually loaded.
+the manifest, and model bytes are read the first time a network is actually
+loaded.
+
+Validation here is structural, not cryptographic: the manifest must describe a
+compatible task, tensor shape/dtype, normalization contract, and labels, and
+:mod:`age_and_gender._inference` separately checks the loaded ONNX graph's own
+declared signature against that same manifest. There is no SHA-256/byte-size
+check of artifact contents against the manifest — a bundle only has to be
+structurally compatible, not byte-identical to some known-good copy, so a
+caller can point this at their own model files without regenerating a
+hash-locked manifest for them. A manifest may still record a ``source`` block
+naming what a model was converted from, purely as an informational note; it is
+never required and never used to gate loading.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from collections.abc import Iterator, Mapping, Sequence
@@ -33,8 +44,6 @@ __all__ = [
     "RuntimeSpec",
     "ShapePredictorSpec",
     "bundled_models",
-    "digest_bytes",
-    "digest_file",
     "load_bundle",
 ]
 
@@ -62,30 +71,6 @@ SUPPORTED_RUNTIME: Final[Mapping[str, Any]] = {
     "inter_op_num_threads": 1,
 }
 
-_READ_BLOCK: Final = 1024 * 1024
-
-
-def digest_bytes(payload: bytes) -> str:
-    """Return the lowercase hexadecimal SHA-256 digest of ``payload``."""
-    return hashlib.sha256(payload).hexdigest()
-
-
-def digest_file(path: str | os.PathLike[str]) -> str:
-    """Return the lowercase hexadecimal SHA-256 digest of a file.
-
-    Args:
-        path: File to hash. Read in blocks, so large models do not have to be
-            held in memory.
-
-    Raises:
-        FileNotFoundError: The path does not exist.
-    """
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as stream:
-        for block in iter(lambda: stream.read(_READ_BLOCK), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
 
 @dataclass(frozen=True, slots=True)
 class Normalization:
@@ -97,19 +82,25 @@ class Normalization:
 
 @dataclass(frozen=True, slots=True)
 class NeuralModelSpec:
-    """Validated description of one converted network inside a bundle."""
+    """Validated description of one converted network inside a bundle.
+
+    ``sha256``/``size_bytes`` and ``source_filename``/``source_sha256`` are
+    informational only, carried over from the manifest when present (the
+    package's own shipped manifest records them for provenance); none of them
+    are checked against the artifact's actual bytes at load time.
+    """
 
     task: Task
     filename: str
-    sha256: str
-    size_bytes: int
     chip_size: int
     classes: int
     input_name: str
     output_name: str
     normalization: Normalization
-    source_filename: str
-    source_sha256: str
+    sha256: str | None = None
+    size_bytes: int | None = None
+    source_filename: str | None = None
+    source_sha256: str | None = None
     labels: tuple[str, ...] | None = None
     age_weights: tuple[float, ...] | None = None
 
@@ -121,14 +112,18 @@ class NeuralModelSpec:
 
 @dataclass(frozen=True, slots=True)
 class ShapePredictorSpec:
-    """Validated description of the bundled five-point landmark model."""
+    """Validated description of the bundled five-point landmark model.
+
+    ``sha256``/``size_bytes`` and ``source_filename``/``source_sha256`` are
+    informational only; see :class:`NeuralModelSpec`.
+    """
 
     filename: str
-    sha256: str
-    size_bytes: int
     parts: int
-    source_filename: str
-    source_sha256: str
+    sha256: str | None = None
+    size_bytes: int | None = None
+    source_filename: str | None = None
+    source_sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,12 +137,16 @@ class RuntimeSpec:
 
 
 class ModelBundle:
-    """A validated set of model resources resolved from one location.
+    """A structurally validated set of model resources resolved from one location.
 
-    The manifest is parsed and checked when the bundle is created. Artifact
-    bytes are read and hash-checked whenever they are handed out, and are not
-    retained afterwards. Reads happen when a model is loaded, never per
-    prediction, so a live session neither reopens nor rehashes its weights.
+    The manifest is parsed and structurally checked when the bundle is
+    created: task, tensor shape/dtype, normalization, and labels. Artifact
+    bytes are read fresh from disk whenever they are handed out, never cached
+    or retained afterwards, but not hash-verified against the manifest — a
+    bundle only has to be structurally compatible, checked by the ONNX Runtime
+    session or dlib predictor that actually loads it. Reads happen when a
+    model is loaded, never per prediction, so a live session never reopens its
+    weights.
     """
 
     def __init__(self, root: Traversable, manifest: Mapping[str, Any], origin: str) -> None:
@@ -160,10 +159,6 @@ class ModelBundle:
             task: _parse_neural_model(manifest, task, origin) for task in TASKS
         }
         self._shape_predictor = _parse_shape_predictor(manifest, origin)
-        self._source_roles: dict[str, str] = {
-            **{spec.source_sha256: task for task, spec in self._specs.items()},
-            self._shape_predictor.source_sha256: "shape_predictor",
-        }
 
     def __repr__(self) -> str:
         return f"ModelBundle(bundle_id={self._bundle_id!r}, origin={self._origin!r})"
@@ -212,90 +207,49 @@ class ModelBundle:
         return self._specs[task]
 
     def model_bytes(self, task: Task) -> bytes:
-        """Read and verify the serialized ONNX graph for ``task``.
+        """Read the serialized ONNX graph for ``task``.
 
-        The bytes returned are always the ones that were just hashed, so a
-        second session built from this bundle cannot pick up a file that changed
-        after an earlier read.
+        Bytes are read fresh from the bundle every time a model is loaded,
+        never cached, so a file that changed on disk is always picked up.
+        Structural compatibility is checked separately, by the ONNX Runtime
+        session this payload builds (see ``_inference.py``'s signature check)
+        — there is no hash comparison here.
 
         Args:
             task: ``"age"`` or ``"gender"``.
 
         Returns:
-            The exact bytes recorded in the manifest.
+            The artifact's current bytes.
 
         Raises:
             FileNotFoundError: The artifact is missing from the bundle.
-            ValueError: The artifact's size or digest does not match the manifest.
         """
         spec = self._specs[task]
-        return self._read_verified(spec.filename, spec.sha256, spec.size_bytes)
+        return self._resource(spec.filename).read_bytes()
 
     @contextmanager
     def shape_predictor_file(self) -> Iterator[Path]:
-        """Yield a filesystem path to the verified five-point landmark model.
+        """Yield a filesystem path to the five-point landmark model.
 
         dlib deserializes from a path rather than from bytes, so the resource is
         materialized for the duration of the context. The path is only valid
         inside the ``with`` block: an installed package may have to extract it
-        from a zip import, and the extracted copy is removed on exit. Each entry
-        verifies the file it is about to yield, so a later call cannot hand out
-        a path whose contents changed since an earlier one.
+        from a zip import, and the extracted copy is removed on exit.
+        Structural compatibility (producing five landmark parts) is checked
+        separately, by ``_faces.py`` when it actually loads the predictor.
 
         Raises:
             FileNotFoundError: The artifact is missing from the bundle.
-            ValueError: The artifact's size or digest does not match the manifest.
         """
         spec = self._shape_predictor
         resource = self._resource(spec.filename)
         with resources.as_file(resource) as path:
-            size = path.stat().st_size
-            if size != spec.size_bytes:
-                raise ValueError(
-                    f"{self._origin}: {spec.filename} is {size} bytes, "
-                    f"manifest records {spec.size_bytes}"
-                )
-            digest = digest_file(path)
-            if digest != spec.sha256:
-                raise ValueError(
-                    f"{self._origin}: {spec.filename} has sha256 {digest}, "
-                    f"manifest records {spec.sha256}"
-                )
+            if not path.is_file():
+                raise FileNotFoundError(f"{self._origin}: {spec.filename} not found")
             yield path
-
-    @property
-    def source_digests(self) -> Mapping[str, str]:
-        """Map legacy ``.dat`` SHA-256 digests to the bundle role they satisfy.
-
-        Roles are ``"age"``, ``"gender"``, and ``"shape_predictor"``. PR-5's
-        loader methods use this to accept the original model files by content
-        rather than by filename.
-        """
-        return dict(self._source_roles)
-
-    def source_role(self, sha256: str) -> str | None:
-        """Return the bundle role a legacy source digest maps to, or ``None``."""
-        return self._source_roles.get(sha256.lower())
 
     def _resource(self, name: str) -> Traversable:
         return self._root.joinpath(name)
-
-    def _read_verified(self, name: str, sha256: str, size_bytes: int) -> bytes:
-        # Whatever is returned is hashed first. Remembering that a name was once
-        # verified would let a later read of a changed file through unchecked,
-        # and the read only happens when a model is loaded, so there is nothing
-        # to gain by skipping it.
-        payload = self._resource(name).read_bytes()
-        if len(payload) != size_bytes:
-            raise ValueError(
-                f"{self._origin}: {name} is {len(payload)} bytes, manifest records {size_bytes}"
-            )
-        digest = digest_bytes(payload)
-        if digest != sha256:
-            raise ValueError(
-                f"{self._origin}: {name} has sha256 {digest}, manifest records {sha256}"
-            )
-        return payload
 
 
 def load_bundle(directory: str | os.PathLike[str]) -> ModelBundle:
@@ -397,12 +351,59 @@ def _section(manifest: Mapping[str, Any], origin: str, *path: str) -> Mapping[st
     return node
 
 
-def _artifact(section: Mapping[str, Any], origin: str, label: str) -> tuple[str, str, int]:
-    for key, expected in (("filename", str), ("sha256", str), ("bytes", int)):
-        value = section.get(key)
-        if not isinstance(value, expected) or isinstance(value, bool):
-            raise ValueError(f"{origin}: manifest {label}.{key} is missing or malformed")
-    return str(section["filename"]), str(section["sha256"]).lower(), int(section["bytes"])
+def _artifact(
+    section: Mapping[str, Any], origin: str, label: str
+) -> tuple[str, str | None, int | None]:
+    """Parse an artifact's filename, and its sha256/bytes if present.
+
+    ``filename`` is the only field this release actually uses to locate and
+    load a model; ``sha256``/``bytes`` are carried through as informational
+    metadata when a manifest happens to record them (the shipped manifest
+    does, for provenance), but are optional and never checked against the
+    artifact's actual bytes.
+    """
+    filename = section.get("filename")
+    if not isinstance(filename, str) or not filename:
+        raise ValueError(f"{origin}: manifest {label}.filename is missing or malformed")
+    _check_flat_filename(filename, origin, label)
+    sha256 = section.get("sha256")
+    if sha256 is not None and not (isinstance(sha256, str) and sha256):
+        raise ValueError(f"{origin}: manifest {label}.sha256 is malformed")
+    size_bytes = section.get("bytes")
+    if size_bytes is not None and (not isinstance(size_bytes, int) or isinstance(size_bytes, bool)):
+        raise ValueError(f"{origin}: manifest {label}.bytes is malformed")
+    return filename, (str(sha256).lower() if sha256 is not None else None), size_bytes
+
+
+def _check_flat_filename(filename: str, origin: str, label: str) -> None:
+    """Reject anything that could resolve outside the bundle directory.
+
+    Every artifact this manifest format names lives directly under the bundle
+    root (the shipped manifest and build_bundle.py both only ever write flat
+    names). `_resource()` joins this filename onto the bundle root without
+    further checks, so an absolute path or a `..` component here would let a
+    corrupt or malicious manifest read a file the caller never intended to
+    expose, breaking `from_model_dir()`'s "backed entirely by this directory"
+    contract.
+    """
+    if not filename or filename in {".", ".."} or "/" in filename or "\\" in filename:
+        raise ValueError(
+            f"{origin}: manifest {label}.filename {filename!r} is not a plain filename"
+        )
+
+
+def _optional_section(manifest: Mapping[str, Any], *path: str) -> Mapping[str, Any] | None:
+    """Like `_section()`, but returns `None` instead of raising when absent.
+
+    Used for the `source` block, which is informational provenance rather
+    than something this release requires every bundle to declare.
+    """
+    node: Any = manifest
+    for key in path:
+        if not isinstance(node, dict) or key not in node:
+            return None
+        node = node[key]
+    return node if isinstance(node, dict) else None
 
 
 def _parse_neural_model(manifest: Mapping[str, Any], task: Task, origin: str) -> NeuralModelSpec:
@@ -412,9 +413,11 @@ def _parse_neural_model(manifest: Mapping[str, Any], task: Task, origin: str) ->
     filename, sha256, size_bytes = _artifact(
         _section(manifest, origin, "models", task, "artifact"), origin, f"models.{task}.artifact"
     )
-    source_filename, source_sha256, _ = _artifact(
-        _section(manifest, origin, "models", task, "source"), origin, f"models.{task}.source"
-    )
+    source = _optional_section(manifest, "models", task, "source")
+    if source is not None:
+        source_filename, source_sha256, _ = _artifact(source, origin, f"models.{task}.source")
+    else:
+        source_filename = source_sha256 = None
     chip_size = _check_graph_signature(manifest, task, origin)
     normalization = _parse_normalization(manifest, task, origin)
     labels = _parse_labels(model, task, origin)
@@ -515,6 +518,9 @@ def _parse_age_weights(
         not isinstance(weights, Sequence)
         or isinstance(weights, (str, bytes))
         or len(weights) != CLASS_COUNTS["age"]
+        or not all(
+            isinstance(value, (int, float)) and not isinstance(value, bool) for value in weights
+        )
     ):
         raise ValueError(
             f"{origin}: manifest models.age.age_weights must list "
@@ -549,11 +555,11 @@ def _parse_shape_predictor(manifest: Mapping[str, Any], origin: str) -> ShapePre
         origin,
         "shape_predictor.artifact",
     )
-    source_filename, source_sha256, _ = _artifact(
-        _section(manifest, origin, "shape_predictor", "source"),
-        origin,
-        "shape_predictor.source",
-    )
+    source = _optional_section(manifest, "shape_predictor", "source")
+    if source is not None:
+        source_filename, source_sha256, _ = _artifact(source, origin, "shape_predictor.source")
+    else:
+        source_filename = source_sha256 = None
     return ShapePredictorSpec(
         filename=filename,
         sha256=sha256,

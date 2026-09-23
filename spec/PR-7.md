@@ -109,9 +109,13 @@ After all parity and install gates pass:
 - Add the working `AgeAndGender()` example; fix the old missing `data` assignment.
 - Show explicit RGB conversion, NumPy inputs, external boxes, inclusive output
   coordinates, no-face results, and reuse of one predictor for multiple images.
-- Document bundled offline models, explicit model directories, and known-hash
-  legacy `.dat` compatibility. Explain how maintainers convert custom compatible
-  networks; users should not expect arbitrary `.dat` loading.
+- Document bundled offline models and explicit model directories
+  (`from_model_dir()`, the two neural loaders' `.onnx`+manifest requirement).
+  Loading is structural, not hash-based (spec/PR-5.md's "Design change"): the
+  original `.dat` neural weights are not loadable directly at all, by design
+  — only `load_shape_predictor` accepts a `.dat` file. Explain how maintainers
+  convert custom-trained networks with `tools/conversion`; users should not
+  expect arbitrary `.dat` loading for the age/gender models.
 - Remove `face_recognition` from the default installation story. Explain its
   coordinate convention without pulling in a competing `dlib` distribution.
 - Explain that the Python package uses prebuilt native dependency wheels; do not

@@ -15,8 +15,10 @@ image. Do not introduce it as a "safe" optimization here.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Final
 
 import dlib
@@ -31,6 +33,7 @@ __all__ = [
     "GENDER_CHIP_SIZE",
     "FaceExtraction",
     "FaceFrontend",
+    "load_predictor",
 ]
 
 # The legacy extension calls extract_image_chip(image, get_face_chip_details(shape,
@@ -67,20 +70,30 @@ class FaceFrontend:
     predictions rather than rebuilt per call.
     """
 
-    def __init__(self, bundle: ModelBundle) -> None:
-        """Load the detector and the bundle's verified landmark model.
+    def __init__(
+        self, bundle: ModelBundle, *, predictor: dlib.shape_predictor | None = None
+    ) -> None:
+        """Load the detector and a validated five-point landmark predictor.
 
         Args:
-            bundle: Validated bundle supplying the five-point landmark model.
+            bundle: Validated bundle supplying the five-point landmark model,
+                unless `predictor` is given explicitly.
+            predictor: An already-validated five-point predictor to install
+                instead of the bundle's own, for example one produced by
+                :func:`load_predictor`. Skips reading the bundle's landmark
+                artifact entirely, so a caller that is about to replace it
+                does not pay for a load that is immediately discarded.
 
         Raises:
-            FileNotFoundError: The bundle is missing the landmark artifact.
-            ValueError: The artifact fails its hash check, cannot be loaded as
-                a shape predictor, or does not produce five landmark parts.
+            FileNotFoundError: `predictor` is not given and the bundle is
+                missing the landmark artifact.
+            ValueError: `predictor` is not given and the bundle's landmark
+                artifact fails its hash check, cannot be loaded as a shape
+                predictor, or does not produce five landmark parts.
         """
         self._bundle = bundle
         self._detector = dlib.get_frontal_face_detector()
-        self._predictor = _load_predictor(bundle)
+        self._predictor = predictor if predictor is not None else _load_predictor(bundle)
 
     def __repr__(self) -> str:
         return f"FaceFrontend(bundle={self._bundle.origin!r})"
@@ -89,6 +102,18 @@ class FaceFrontend:
     def bundle(self) -> ModelBundle:
         """The bundle this frontend's landmark model was resolved from."""
         return self._bundle
+
+    def replace_predictor(self, predictor: dlib.shape_predictor) -> None:
+        """Install an already-validated five-point predictor.
+
+        The detector is unaffected: it is stateless and not tied to any
+        particular landmark model.
+
+        Args:
+            predictor: A predictor that has already been confirmed to produce
+                five landmark parts, for example via :func:`load_predictor`.
+        """
+        self._predictor = predictor
 
     def detect(self, image: np.ndarray) -> list[Rectangle]:
         """Detect faces with zero upsampling, in the detector's own order.
@@ -177,6 +202,10 @@ def _landmarks_of(shape: dlib.full_object_detection) -> list[list[int]]:
     return [[shape.part(i).x, shape.part(i).y] for i in range(shape.num_parts)]
 
 
+def _probe_parts(predictor: dlib.shape_predictor) -> int:
+    return predictor(_PROBE_IMAGE, _PROBE_RECTANGLE).num_parts
+
+
 def _load_predictor(bundle: ModelBundle) -> dlib.shape_predictor:
     spec = bundle.shape_predictor
     with bundle.shape_predictor_file() as path:
@@ -186,10 +215,46 @@ def _load_predictor(bundle: ModelBundle) -> dlib.shape_predictor:
             raise ValueError(
                 f"{bundle.origin}: could not load {spec.filename} as a shape predictor: {error}"
             ) from error
-    parts = predictor(_PROBE_IMAGE, _PROBE_RECTANGLE).num_parts
+    parts = _probe_parts(predictor)
     if parts != _REQUIRED_LANDMARK_PARTS:
         raise ValueError(
             f"{bundle.origin}: {spec.filename} produces {parts} landmark parts, "
             f"this release requires {_REQUIRED_LANDMARK_PARTS}"
+        )
+    return predictor
+
+
+def load_predictor(path: str | os.PathLike[str]) -> dlib.shape_predictor:
+    """Load and validate an explicit five-point landmark model file.
+
+    Unlike the bundle-backed loading :class:`FaceFrontend` does internally,
+    this reads `path` directly: dlib deserializes a shape predictor natively,
+    with no ONNX conversion step, so any compatible file works, not only the
+    bundled one. This is what the public API's ``load_shape_predictor``
+    compatibility method uses.
+
+    Args:
+        path: Path to a dlib five-point shape-predictor ``.dat`` file.
+
+    Returns:
+        A predictor confirmed to produce five landmark parts.
+
+    Raises:
+        FileNotFoundError: `path` does not exist.
+        ValueError: The file cannot be loaded as a shape predictor, or
+            produces a different number of landmark parts.
+    """
+    file_path = Path(path)
+    if not file_path.is_file():
+        raise FileNotFoundError(f"no shape predictor at {file_path}")
+    try:
+        predictor = dlib.shape_predictor(str(file_path))
+    except Exception as error:
+        raise ValueError(f"{file_path}: could not load as a shape predictor: {error}") from error
+    parts = _probe_parts(predictor)
+    if parts != _REQUIRED_LANDMARK_PARTS:
+        raise ValueError(
+            f"{file_path}: produces {parts} landmark parts, this release requires "
+            f"{_REQUIRED_LANDMARK_PARTS}"
         )
     return predictor
