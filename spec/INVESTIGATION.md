@@ -467,7 +467,7 @@ src/age_and_gender/
     _faces.py              # Dlib frontend, kept behind a narrow boundary
     _inference.py          # ONNX sessions and float32 tensor preparation
     _postprocess.py        # Exact legacy rounding / result conversion
-    _models.py             # Resources, manifests, hash-based legacy mapping
+    _models.py             # Resources and structural manifest validation
     _types.py              # Result TypedDicts, small shared types
     py.typed
     models/
@@ -498,15 +498,22 @@ API needs a temporary extracted file. Do not resolve relative to the process
 working directory. No import-time downloads, conversion, or model inference.
 
 Preserve `load_shape_predictor`, `load_dnn_age_predictor`, and
-`load_dnn_gender_classifier` names. Known legacy neural `.dat` files can continue
-to work by **hashing their contents and selecting their preconverted bundled
-equivalent**. This is not direct `.dat` inference. Unknown `.dat` weights require
-the documented maintainer converter and must fail clearly instead of silently
-using defaults. Shape `.dat` loading remains direct through dlib.
+`load_dnn_gender_classifier` names. Shape `.dat` loading remains direct
+through dlib. **Updated after PR-5:** the two neural loaders do not accept
+the legacy `.dat` files at all, hashed or not — there is no runtime path from
+that proprietary dlib serialization to ONNX, so no Python-side hash lookup
+changes that. Convert custom weights once with the documented maintainer
+converter and load the resulting `.onnx` file; the two neural loaders fail
+clearly, pointing at that workflow, for anything else.
 
 Support explicit converted model bundles with manifests. Validate task, shape,
-dtype, normalization, label order, and hashes when loading. A file with 81 outputs
-alone is not enough to identify a compatible age model.
+dtype, normalization, and label order when loading. A file with 81 outputs
+alone is not enough to identify a compatible age model. **Updated after
+PR-5:** artifact hashes are not part of that validation — a bundle only has
+to be structurally compatible with its own manifest's declared contract, not
+byte-identical to a specific known-good copy; see spec/PR-5.md's "Design
+change" section, an explicit product decision made after the initial PR-5
+implementation.
 
 ### Public API
 
@@ -568,7 +575,7 @@ as an unvalidated default optimization.
 | Probability boundaries change public integers | Exact final-output checks plus float32/rounding boundary fixtures |
 | Third-party dlib wheel maintenance / platform gaps | Pin validated distribution, test binary-only installs, publish truthful platform matrix |
 | Model/resource size | Bundle once; measure wheel; no duplicate age/gender `.dat` payload |
-| Arbitrary legacy custom `.dat` files | Explicit conversion workflow; hash-based compatibility only for known models |
+| Arbitrary legacy custom `.dat` files | Explicit conversion workflow to `.onnx`; not loadable directly at all, by anyone, since no runtime dlib-to-ONNX path exists (**updated after PR-5**: compatibility for the *converted* `.onnx` result is validated structurally against its manifest, not by matching a known hash) |
 | Future dlib-free requirement | Conditional PR-8; do not disguise model substitution as equivalence |
 | Removal of legacy sources loses reproducibility | Preserve pinned oracle/export recipe before removing `libs/` from the application tree |
 | README screenshots treated as truth | Regenerate fixtures from executable behavior and original decoded inputs |

@@ -117,6 +117,45 @@ print(json.dumps({
 """
 
 
+# Exercises the public AgeAndGender class exactly as spec/PR-5.md's target
+# surface shows it: zero-configuration construction, the three loader methods
+# (the two neural ones against an explicit .onnx bundle, since the original
+# .dat weights are not loadable directly), and both predict() call styles.
+# CHILD_PROGRAM and FRONTEND_CHILD_PROGRAM above only reach the internal
+# modules directly; this is the only check in the suite that imports
+# age_and_gender.AgeAndGender from a binary-only install.
+API_CHILD_PROGRAM = """
+import json, sys
+from pathlib import Path
+
+from PIL import Image
+
+from age_and_gender import AgeAndGender
+
+image_path = Path(sys.argv[1])
+bundle_dir = Path(sys.argv[2])
+
+zero_config = AgeAndGender()
+with Image.open(image_path) as image:
+    zero_config_results = zero_config.predict(image.convert("RGB"))
+
+explicit = AgeAndGender()
+explicit.load_shape_predictor(bundle_dir / "shape_predictor_5_face_landmarks.dat")
+explicit.load_dnn_gender_classifier(bundle_dir / "gender-v1.onnx")
+explicit.load_dnn_age_predictor(bundle_dir / "age-v1.onnx")
+with Image.open(image_path) as image:
+    positional_results = explicit.predict(image.convert("RGB"))
+with Image.open(image_path) as image:
+    keyword_results = explicit.predict(photo_numpy_array=image.convert("RGB"))
+
+print(json.dumps({
+    "zero_config_results": zero_config_results,
+    "positional_results": positional_results,
+    "keyword_results": keyword_results,
+}))
+"""
+
+
 def _run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command,
@@ -160,6 +199,7 @@ class PackagedDistributionTests(unittest.TestCase):
         cls.environment = cls._install(cls.workspace / "env", cls.wheel)
         cls.output = cls._infer(cls.environment)
         cls.frontend_output = cls._infer_frontend(cls.environment)
+        cls.api_output = cls._infer_api(cls.environment)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -246,6 +286,36 @@ class PackagedDistributionTests(unittest.TestCase):
         program = sandbox / "run_frontend.py"
         program.write_text(FRONTEND_CHILD_PROGRAM, encoding="utf-8")
         return cls._run_isolated(python, sandbox, program, str(image_path))
+
+    @classmethod
+    def _infer_api(cls, python: Path) -> dict:
+        """Run the public AgeAndGender class, including the explicit loaders.
+
+        Copies the image and, as an explicit bundle directory, the package's
+        own installed models (``src/age_and_gender/models/``, not
+        ``example/models/``: the latter's legacy ``.dat`` duplicates are
+        excluded from the sdist, but the former is the package's own data and
+        always ships) out of the checkout, so the child reads nothing from the
+        source tree except the wheel it has installed.
+        """
+        sandbox = cls.workspace / "elsewhere-api"
+        sandbox.mkdir()
+        image_path = sandbox / "test-image.jpg"
+        image_path.write_bytes((ROOT / "example/test-image.jpg").read_bytes())
+        bundle_dir = sandbox / "bundle"
+        bundle_dir.mkdir()
+        for name in (
+            "manifest.json",
+            "age-v1.onnx",
+            "gender-v1.onnx",
+            "shape_predictor_5_face_landmarks.dat",
+        ):
+            (bundle_dir / name).write_bytes(
+                (ROOT / "src/age_and_gender/models" / name).read_bytes()
+            )
+        program = sandbox / "run_api.py"
+        program.write_text(API_CHILD_PROGRAM, encoding="utf-8")
+        return cls._run_isolated(python, sandbox, program, str(image_path), str(bundle_dir))
 
     def test_wheel_is_pure_python_and_has_no_native_extension(self) -> None:
         self.assertTrue(self.wheel.name.endswith("-py3-none-any.whl"), self.wheel.name)
@@ -410,6 +480,23 @@ class PackagedDistributionTests(unittest.TestCase):
         """
         expected = [face.result for face in golden_images()["test-image.golden.json"]]
         self.assertEqual(self.frontend_output["results"], expected)
+
+    def test_public_api_reproduces_the_frozen_results_from_the_installed_wheel(self) -> None:
+        """spec/PR-5.md's "built-wheel integration using real models" check:
+        the public AgeAndGender class, not the internal modules, driven end to
+        end from a binary-only install.
+        """
+        expected = [face.result for face in golden_images()["test-image.golden.json"]]
+        self.assertEqual(self.api_output["zero_config_results"], expected)
+
+    def test_explicit_loaders_reproduce_the_frozen_results_from_the_installed_wheel(self) -> None:
+        """The three loader calls, against an explicit bundle directory built
+        from the installed wheel's own models, still reproduce the exact
+        results, positionally and by keyword.
+        """
+        expected = [face.result for face in golden_images()["test-image.golden.json"]]
+        self.assertEqual(self.api_output["positional_results"], expected)
+        self.assertEqual(self.api_output["keyword_results"], expected)
 
 
 if __name__ == "__main__":

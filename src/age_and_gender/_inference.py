@@ -112,8 +112,8 @@ class NeuralNetwork:
 
         Raises:
             FileNotFoundError: The bundle is missing the model artifact.
-            ValueError: The artifact fails its hash check, cannot be loaded, or
-                does not match the graph signature the manifest declares.
+            ValueError: The artifact cannot be loaded, or does not match the
+                graph signature the manifest declares.
         """
         if self._session is None:
             self._session = self._create_session()

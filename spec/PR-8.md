@@ -103,8 +103,10 @@ parser separately rather than folding it into the numerical port.
 - Remove `dlib-bin` only after the new default fully supports auto-detection and
   caller-supplied boxes. Do not call a boxes-only partial implementation complete.
 - Update asset manifests, attribution, package size, platform matrix, and model
-  loader documentation. Preserve the known legacy hash mapping for the shape
-  model if its runtime representation changes.
+  loader documentation. `load_shape_predictor` still has to load any
+  compatible five-point predictor directly (no hash lookup, no manifest —
+  see spec/PR-5.md's "Design change" section) if its runtime representation
+  changes.
 
 ## Acceptance and decision rule
 

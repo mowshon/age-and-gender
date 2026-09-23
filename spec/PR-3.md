@@ -161,6 +161,24 @@ PR-2 artifacts as package data.
   `tests/integration/test_package_resources.py`. The suite is 137 tests and
   `ruff check .` is clean.
 
+**Updated after PR-5.** The "verifies artifact size and SHA-256 once per
+load" and "legacy `.dat` digest-to-role mapping" behavior described above was
+later removed by explicit product direction: loading is validated
+structurally (manifest schema, task, graph signature, normalization,
+labels — all still enforced exactly as built here), not cryptographically.
+`ModelBundle.model_bytes()`/`shape_predictor_file()` now just read the file;
+`source_role()`/`source_digests`/`digest_bytes()`/`digest_file()` were
+deleted once nothing used them for gating. See spec/PR-5.md's "Design change"
+section for the full rationale and consequences. Everything else in this
+section (session lifecycle, numeric processing, package scaffold) is
+unaffected. This same removal supersedes every other hash/SHA-256 mention
+above and below this note — the "Model resources" and "Tests" bullets in the
+original `## Work`/`## Tests` sections, and "Review follow-ups" finding 1's
+"verification is now unconditional on every read" (there is no verification
+of any kind any more, conditional or not) — all describe the pre-PR-5 design
+this note replaces, kept as a historical record rather than rewritten in
+place.
+
 ### Measured parity
 
 Chip inference through the installed bundle, against all 11 frozen oracle faces:

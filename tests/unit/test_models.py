@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -8,13 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from age_and_gender import _models
-from age_and_gender._models import (
-    ModelBundle,
-    bundled_models,
-    digest_file,
-    load_bundle,
-)
+from age_and_gender._models import ModelBundle, bundled_models, load_bundle
 from tests.bundles import (
     CONVERSION_BUNDLE,
     PACKAGE_MODELS,
@@ -25,10 +20,6 @@ from tests.bundles import (
     package_manifest,
     write_manifest,
 )
-
-LEGACY_AGE_SHA = "4b78d4d7055e22620e362884b5551caa9379080277338aa2d4cdfc592f0e9fa3"
-LEGACY_GENDER_SHA = "85453d6f6585c8e02ada95929956783c780dc04dcec5bdfd14af82f15c99ba41"
-LEGACY_SHAPE_SHA = "c4b1e9804792707d3a405c2c16a80a20269e6675021f64a41d30fffafbc41888"
 
 # An audit hook records every file the interpreter opens while the package is
 # imported. Run in a child process so the import is genuinely the first one.
@@ -49,6 +40,10 @@ print(json.dumps({
     ],
 }))
 """
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 class TempBundleTestCase(unittest.TestCase):
@@ -82,7 +77,7 @@ class BundledResourceTests(unittest.TestCase):
         self.assertNotIn(str(Path.cwd()), bundle.origin)
         with bundle.shape_predictor_file() as path:
             self.assertTrue(path.is_file())
-            self.assertEqual(digest_file(path), LEGACY_SHAPE_SHA)
+            self.assertGreater(path.stat().st_size, 0)
 
     def test_runtime_block_is_the_validated_configuration(self) -> None:
         runtime = bundled_models().runtime
@@ -101,11 +96,10 @@ class BundledResourceTests(unittest.TestCase):
         self.assertEqual(weights[0], 0.25)
         self.assertEqual(weights[1:], tuple(float(index) for index in range(1, 81)))
 
-    def test_model_bytes_match_the_manifest(self) -> None:
+    def test_model_bytes_are_read_from_the_artifact_file(self) -> None:
         bundle = load_bundle(PACKAGE_MODELS)
         payload = bundle.model_bytes("age")
-        self.assertEqual(len(payload), bundle.age.size_bytes)
-        self.assertEqual(_models.digest_bytes(payload), bundle.age.sha256)
+        self.assertEqual(payload, (PACKAGE_MODELS / bundle.age.filename).read_bytes())
 
     def test_importing_the_package_opens_no_model_resource(self) -> None:
         environment = dict(os.environ)
@@ -123,6 +117,12 @@ class BundledResourceTests(unittest.TestCase):
         self.assertTrue(result["version"])
 
     def test_notices_ship_with_the_models_and_match_their_digests(self) -> None:
+        """A repo-content check: the manifest's recorded notice digests still
+        match the shipped notice files. This is unrelated to model loading
+        (notices are never read by `_models.py` at runtime, by design — see
+        spec/PR-3.md's review follow-ups), so it hashes directly rather than
+        through any package API.
+        """
         manifest = package_manifest()
         notices = (
             manifest["license"]["notice"],
@@ -132,7 +132,7 @@ class BundledResourceTests(unittest.TestCase):
         for notice in notices:
             path = PACKAGE_MODELS / notice["path"]
             self.assertTrue(path.is_file(), notice["path"])
-            self.assertEqual(digest_file(path), notice["sha256"], notice["path"])
+            self.assertEqual(_sha256(path), notice["sha256"], notice["path"])
 
     def test_package_manifest_agrees_with_the_conversion_bundle(self) -> None:
         """The package bundle is assembled from PR-2's artifacts, not re-derived."""
@@ -143,78 +143,46 @@ class BundledResourceTests(unittest.TestCase):
             self.assertEqual(package[key], value, key)
 
 
-class LegacySourceMappingTests(unittest.TestCase):
-    def test_known_source_hashes_map_to_their_bundle_role(self) -> None:
-        bundle = bundled_models()
-        self.assertEqual(bundle.source_role(LEGACY_AGE_SHA), "age")
-        self.assertEqual(bundle.source_role(LEGACY_GENDER_SHA), "gender")
-        self.assertEqual(bundle.source_role(LEGACY_SHAPE_SHA), "shape_predictor")
-        self.assertEqual(bundle.source_role(LEGACY_AGE_SHA.upper()), "age")
+class UnverifiedArtifactContentTests(TempBundleTestCase):
+    """Loading is structural, not cryptographic: a bundle only has to satisfy
+    the manifest's declared task/shape/normalization contract, not match a
+    recorded hash. These tests guard that decision directly, so a future
+    change cannot silently reintroduce a hash gate without a test noticing.
+    """
 
-    def test_unknown_source_hashes_do_not_select_a_default(self) -> None:
-        bundle = bundled_models()
-        self.assertIsNone(bundle.source_role("0" * 64))
-        self.assertEqual(
-            set(bundle.source_digests),
-            {LEGACY_AGE_SHA, LEGACY_GENDER_SHA, LEGACY_SHAPE_SHA},
-        )
+    def test_model_bytes_are_returned_even_when_corrupted(self) -> None:
+        bundle_dir = full_bundle(self.tmp / "flipped")
+        corrupt_bytes(bundle_dir / "age-v1.onnx")
+        corrupted = (bundle_dir / "age-v1.onnx").read_bytes()
+        self.assertEqual(load_bundle(bundle_dir).model_bytes("age"), corrupted)
 
-    def test_source_digests_is_a_copy(self) -> None:
-        bundle = bundled_models()
-        digests = bundle.source_digests
-        digests["0" * 64] = "age"  # type: ignore[index]
-        self.assertIsNone(bundle.source_role("0" * 64))
-
-
-class CorruptResourceTests(TempBundleTestCase):
-    def test_flipped_model_byte_is_rejected(self) -> None:
-        bundle = full_bundle(self.tmp / "flipped")
-        corrupt_bytes(bundle / "age-v1.onnx")
-        with self.assertRaises(ValueError) as caught:
-            load_bundle(bundle).model_bytes("age")
-        self.assertIn("sha256", str(caught.exception))
-
-    def test_truncated_model_is_rejected_by_size(self) -> None:
-        bundle = full_bundle(self.tmp / "short")
-        path = bundle / "gender-v1.onnx"
+    def test_model_bytes_are_returned_even_when_truncated(self) -> None:
+        bundle_dir = full_bundle(self.tmp / "short")
+        path = bundle_dir / "gender-v1.onnx"
         path.write_bytes(path.read_bytes()[:-16])
-        with self.assertRaises(ValueError) as caught:
-            load_bundle(bundle).model_bytes("gender")
-        self.assertIn("bytes", str(caught.exception))
+        self.assertEqual(load_bundle(bundle_dir).model_bytes("gender"), path.read_bytes())
 
-    def test_corrupt_shape_predictor_is_rejected(self) -> None:
-        bundle = full_bundle(self.tmp / "predictor")
-        corrupt_bytes(bundle / "shape_predictor_5_face_landmarks.dat")
-        loaded = load_bundle(bundle)
-        with self.assertRaises(ValueError) as caught, loaded.shape_predictor_file():
-            pass
-        self.assertIn("sha256", str(caught.exception))
+    def test_shape_predictor_file_is_yielded_even_when_corrupted(self) -> None:
+        bundle_dir = full_bundle(self.tmp / "predictor")
+        corrupt_bytes(bundle_dir / "shape_predictor_5_face_landmarks.dat")
+        with load_bundle(bundle_dir).shape_predictor_file() as path:
+            self.assertTrue(path.is_file())
 
-    def test_a_model_changed_after_a_good_read_is_rejected(self) -> None:
-        """A bundle that verified once must not hand out changed bytes later."""
-        path = full_bundle(self.tmp / "changed")
-        bundle = load_bundle(path)
-        good = bundle.model_bytes("age")
-        corrupt_bytes(path / "age-v1.onnx")
-        with self.assertRaises(ValueError) as caught:
-            bundle.model_bytes("age")
-        self.assertIn("sha256", str(caught.exception))
-        self.assertEqual(_models.digest_bytes(good), bundle.age.sha256)
+    def test_model_bytes_reflect_the_current_file_not_a_cached_read(self) -> None:
+        bundle_dir = full_bundle(self.tmp / "changed")
+        bundle = load_bundle(bundle_dir)
+        original = bundle.model_bytes("age")
+        corrupt_bytes(bundle_dir / "age-v1.onnx")
+        changed = bundle.model_bytes("age")
+        self.assertNotEqual(original, changed)
+        self.assertEqual(changed, (bundle_dir / "age-v1.onnx").read_bytes())
 
-    def test_a_predictor_changed_after_a_good_read_is_rejected(self) -> None:
-        path = full_bundle(self.tmp / "changed-predictor")
-        bundle = load_bundle(path)
-        with bundle.shape_predictor_file() as first:
-            self.assertTrue(first.is_file())
-        corrupt_bytes(path / "shape_predictor_5_face_landmarks.dat")
-        with self.assertRaises(ValueError), bundle.shape_predictor_file():
-            pass
-
-    def test_missing_artifact_raises_file_not_found(self) -> None:
-        bundle = full_bundle(self.tmp / "missing")
-        (bundle / "age-v1.onnx").unlink()
+    def test_missing_artifact_still_raises_file_not_found(self) -> None:
+        """Dropping hash verification does not drop existence checking."""
+        bundle_dir = full_bundle(self.tmp / "missing")
+        (bundle_dir / "age-v1.onnx").unlink()
         with self.assertRaises(FileNotFoundError):
-            load_bundle(bundle).model_bytes("age")
+            load_bundle(bundle_dir).model_bytes("age")
 
     def test_missing_manifest_raises_file_not_found(self) -> None:
         empty = self.tmp / "empty"
@@ -227,6 +195,33 @@ class CorruptResourceTests(TempBundleTestCase):
         broken.mkdir()
         (broken / "manifest.json").write_text("{not json", encoding="utf-8")
         self.assertRejects(broken, "not valid JSON")
+
+
+class RelaxedArtifactMetadataTests(TempBundleTestCase):
+    """A caller pointing this at their own converted model should not have to
+    fabricate hash/provenance metadata just to satisfy the schema.
+    """
+
+    def test_artifact_without_sha256_or_bytes_still_loads(self) -> None:
+        def strip(manifest: dict) -> None:
+            del manifest["models"]["age"]["artifact"]["sha256"]
+            del manifest["models"]["age"]["artifact"]["bytes"]
+
+        bundle_dir = full_bundle(self.tmp / "no-hash", strip)
+        bundle = load_bundle(bundle_dir)
+        self.assertIsNone(bundle.age.sha256)
+        self.assertIsNone(bundle.age.size_bytes)
+        self.assertTrue(bundle.model_bytes("age"))
+
+    def test_missing_source_block_still_loads(self) -> None:
+        def drop(manifest: dict) -> None:
+            del manifest["models"]["age"]["source"]
+            del manifest["shape_predictor"]["source"]
+
+        bundle_dir = full_bundle(self.tmp / "no-source", drop)
+        bundle = load_bundle(bundle_dir)
+        self.assertIsNone(bundle.age.source_filename)
+        self.assertIsNone(bundle.shape_predictor.source_filename)
 
 
 class UnsupportedManifestTests(TempBundleTestCase):
@@ -326,6 +321,35 @@ class UnsupportedManifestTests(TempBundleTestCase):
 
         self.assertRejects(manifest_only(self.tmp / "short-weights", truncate), "81")
 
+    def test_null_age_class_weight_is_refused_as_a_value_error(self) -> None:
+        """A `float(None)` inside the parser would raise a raw TypeError
+        instead of the documented ValueError; the length/type check must
+        catch this before any element is converted.
+        """
+
+        def nullify(manifest: dict) -> None:
+            manifest["models"]["age"]["age_weights"][5] = None
+
+        self.assertRejects(manifest_only(self.tmp / "null-weight", nullify), "class weights")
+
+    def test_boolean_age_class_weight_is_refused(self) -> None:
+        def booleanize(manifest: dict) -> None:
+            manifest["models"]["age"]["age_weights"][5] = True
+
+        self.assertRejects(manifest_only(self.tmp / "bool-weight", booleanize), "class weights")
+
+    def test_path_traversal_in_artifact_filename_is_refused(self) -> None:
+        def escape(manifest: dict) -> None:
+            manifest["models"]["age"]["artifact"]["filename"] = "../outside.onnx"
+
+        self.assertRejects(manifest_only(self.tmp / "traversal", escape), "not a plain filename")
+
+    def test_absolute_artifact_filename_is_refused(self) -> None:
+        def absolute(manifest: dict) -> None:
+            manifest["models"]["age"]["artifact"]["filename"] = "/etc/passwd"
+
+        self.assertRejects(manifest_only(self.tmp / "absolute", absolute), "not a plain filename")
+
     def test_missing_model_section_is_refused(self) -> None:
         self.assertRejects(
             manifest_only(self.tmp / "no-gender", lambda m: m["models"].pop("gender")),
@@ -350,17 +374,126 @@ class UnsupportedManifestTests(TempBundleTestCase):
         (directory / "manifest.json").write_text("[]", encoding="utf-8")
         self.assertRejects(directory, "JSON object")
 
-    def test_malformed_artifact_entry_is_refused(self) -> None:
+    def test_missing_artifact_filename_is_refused(self) -> None:
         def blank(manifest: dict) -> None:
-            manifest["models"]["age"]["artifact"]["sha256"] = None
+            del manifest["models"]["age"]["artifact"]["filename"]
 
-        self.assertRejects(manifest_only(self.tmp / "artifact", blank), "artifact.sha256")
+        self.assertRejects(manifest_only(self.tmp / "artifact", blank), "artifact.filename")
+
+    def test_malformed_artifact_filename_is_refused(self) -> None:
+        def wrong_type(manifest: dict) -> None:
+            manifest["models"]["age"]["artifact"]["filename"] = 123
+
+        self.assertRejects(
+            manifest_only(self.tmp / "artifact-type", wrong_type), "artifact.filename"
+        )
+
+    def test_malformed_artifact_sha256_is_refused_when_present(self) -> None:
+        """sha256 is optional, but a present-and-malformed value is still an error."""
+
+        def wrong_type(manifest: dict) -> None:
+            manifest["models"]["age"]["artifact"]["sha256"] = 123
+
+        self.assertRejects(manifest_only(self.tmp / "sha-type", wrong_type), "artifact.sha256")
+
+    def test_null_input_shape_is_refused_as_a_value_error(self) -> None:
+        """`list(None)` would raise a raw TypeError; a null shape must be
+        reported the same documented way as a missing or wrong-length one.
+        """
+
+        def nullify(manifest: dict) -> None:
+            manifest["models"]["age"]["input"]["shape"] = None
+
+        self.assertRejects(manifest_only(self.tmp / "null-shape", nullify), "input.shape")
+
+    def test_non_list_output_shape_is_refused_as_a_value_error(self) -> None:
+        def wrong_type(manifest: dict) -> None:
+            manifest["models"]["gender"]["output"]["shape"] = 7
+
+        self.assertRejects(manifest_only(self.tmp / "int-shape", wrong_type), "output.shape")
+
+    def test_non_list_gender_labels_is_refused_as_a_value_error(self) -> None:
+        """`list(labels or [])` would raise a raw TypeError for a truthy
+        non-iterable value such as a bare int.
+        """
+
+        def wrong_type(manifest: dict) -> None:
+            manifest["models"]["gender"]["labels"] = 7
+
+        self.assertRejects(manifest_only(self.tmp / "int-labels", wrong_type), "labels")
+
+    def test_nan_normalization_mean_is_refused(self) -> None:
+        def nanify(manifest: dict) -> None:
+            manifest["models"]["age"]["input"]["normalization"]["means"][0] = float("nan")
+
+        self.assertRejects(manifest_only(self.tmp / "nan-mean", nanify), "finite")
+
+    def test_infinite_normalization_mean_is_refused(self) -> None:
+        def infinitize(manifest: dict) -> None:
+            manifest["models"]["age"]["input"]["normalization"]["means"][1] = float("inf")
+
+        self.assertRejects(manifest_only(self.tmp / "inf-mean", infinitize), "finite")
+
+    def test_float32_overflowing_normalization_mean_is_refused(self) -> None:
+        """Finite as float64 but `inf` once cast to float32, the dtype every
+        network actually computes in.
+        """
+
+        def overflow(manifest: dict) -> None:
+            manifest["models"]["age"]["input"]["normalization"]["means"][2] = 1e40
+
+        self.assertRejects(manifest_only(self.tmp / "overflow-mean", overflow), "finite")
 
     def test_rejected_manifests_do_not_disturb_the_installed_bundle(self) -> None:
         with self.assertRaises(ValueError):
             load_bundle(manifest_only(self.tmp / "bad", lambda m: m.pop("runtime")))
         self.assertIsInstance(bundled_models(), ModelBundle)
         self.assertEqual(bundled_models().bundle_id, "age-and-gender-v1")
+
+
+class SymlinkContainmentTests(TempBundleTestCase):
+    """`_check_flat_filename()` only rejects traversal spelled out in the
+    manifest's filename string; a flat name that is itself a symlink pointing
+    outside the bundle directory must be refused too, or `from_model_dir()`'s
+    "backed entirely by this directory" guarantee would not hold.
+    """
+
+    def test_symlinked_neural_artifact_outside_the_bundle_is_refused(self) -> None:
+        bundle_dir = full_bundle(self.tmp / "symlinked-age")
+        target = self.tmp / "outside.onnx"
+        target.write_bytes(b"not a real model, just needs to exist")
+        artifact = bundle_dir / "age-v1.onnx"
+        artifact.unlink()
+        artifact.symlink_to(target)
+        with self.assertRaises(ValueError) as caught:
+            load_bundle(bundle_dir).model_bytes("age")
+        self.assertIn("outside the bundle directory", str(caught.exception))
+
+    def test_symlinked_shape_predictor_outside_the_bundle_is_refused(self) -> None:
+        bundle_dir = full_bundle(self.tmp / "symlinked-predictor")
+        target = self.tmp / "outside.dat"
+        target.write_bytes(b"not a real predictor, just needs to exist")
+        artifact = bundle_dir / "shape_predictor_5_face_landmarks.dat"
+        artifact.unlink()
+        artifact.symlink_to(target)
+        with (
+            self.assertRaises(ValueError) as caught,
+            load_bundle(bundle_dir).shape_predictor_file(),
+        ):
+            pass
+        self.assertIn("outside the bundle directory", str(caught.exception))
+
+    def test_symlink_that_stays_inside_the_bundle_is_accepted(self) -> None:
+        """A symlink is only refused for escaping the bundle root, not for
+        existing at all: this would be a false positive if it were rejected.
+        """
+        bundle_dir = full_bundle(self.tmp / "internal-symlink")
+        artifact = bundle_dir / "age-v1.onnx"
+        real_bytes = artifact.read_bytes()
+        renamed = bundle_dir / "age-v1-real.onnx"
+        artifact.rename(renamed)
+        artifact.symlink_to(renamed)
+        self.assertEqual(load_bundle(bundle_dir).model_bytes("age"), real_bytes)
 
 
 class ManifestRoundTripTests(TempBundleTestCase):

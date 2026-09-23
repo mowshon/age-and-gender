@@ -12,10 +12,15 @@ python -m pip install face_recognition --user
 
 """
 
+# Uses the models installed with the package; no explicit paths needed. The
+# original dnn_age_predictor_v1.dat/dnn_gender_classifier_v1.dat cannot be
+# loaded directly any more (see spec/PR-5.md's "Design change" section) since
+# they are a proprietary dlib format with no runtime ONNX reader, so
+# load_dnn_age_predictor/load_dnn_gender_classifier now only accept a
+# converted .onnx file. To use a custom five-point landmark model instead of
+# the bundled one, call:
+#   data.load_shape_predictor('models/shape_predictor_5_face_landmarks.dat')
 data = AgeAndGender()
-data.load_shape_predictor('models/shape_predictor_5_face_landmarks.dat')
-data.load_dnn_gender_classifier('models/dnn_gender_classifier_v1.dat')
-data.load_dnn_age_predictor('models/dnn_age_predictor_v1.dat')
 
 filename = 'test-image-2.jpg'
 
