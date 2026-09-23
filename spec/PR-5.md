@@ -440,3 +440,115 @@ addressed below rather than fixed, because on inspection it reads spec/PR-5
    skips (rather than fails) when its half did not run. Re-verified against
    an extracted sdist: the zero-config check passes and the legacy-loader
    check skips cleanly instead of crashing the class.
+
+### Second review round (after the design change)
+
+A further external review, run against the post-design-change branch, raised
+nine findings. Six were reproduced and fixed; one was investigated and found
+not to reproduce on this project's target Python versions; two are real but
+deliberately left open, explained below rather than fixed.
+
+1. **Custom `.dat` conversion guidance is unusable for arbitrary compatible
+   sources (medium) — acknowledged, not changed.** `tools/conversion` requires
+   the original three known files; a compatible but not-byte-identical `.dat`
+   cannot be converted by it. The reporter noted they did not mind this one;
+   it is maintainer-tooling scope (a general dlib-network-to-ONNX converter),
+   not something `api.py`'s error message can fix, so it is left as is.
+2. **Non-finite normalization means passed eager validation (medium) — fixed.**
+   `_parse_normalization()` checked element type but not finiteness, so a
+   manifest with `NaN`/`Infinity` means (Python's `json` module accepts both
+   as a non-standard extension) built a session successfully and only failed
+   later, inside `predict()`, with a "non-finite probabilities" error far from
+   the actual cause. Confirmed by constructing exactly that manifest.
+   `_parse_normalization()` now also rejects a mean that is not finite, or
+   that overflows to `inf` when cast to float32 (the dtype every network
+   actually computes in — some large-but-finite float64 values silently
+   become `inf` there). `test_nan_normalization_mean_is_refused`,
+   `test_infinite_normalization_mean_is_refused`, and
+   `test_float32_overflowing_normalization_mean_is_refused` in
+   `tests/unit/test_models.py` cover it.
+3. **Malformed manifests leaked a raw `TypeError` instead of the documented
+   `ValueError` (medium) — fixed.** `_check_graph_signature()` and
+   `_parse_labels()` called `list()` on an unchecked manifest value
+   (`model_input.get("shape", [])` / `labels or []`); a manifest with
+   `"shape": null` or `"labels": 7` raised `TypeError` instead of `ValueError`,
+   because `.get(key, default)` only substitutes the default when the key is
+   *absent*, not when it is present and `null`, and `list()` on a bare `int`
+   or `None` raises rather than returning an empty/short list. Confirmed with
+   both examples. Both call sites now go through a new `_as_list_or_none()`
+   helper that returns `[]` for a missing/null field and `None` (never raises)
+   for anything else, so a malformed field always falls through to the
+   existing mismatch-message `ValueError` instead of crashing.
+   `test_null_input_shape_is_refused_as_a_value_error`,
+   `test_non_list_output_shape_is_refused_as_a_value_error`, and
+   `test_non_list_gender_labels_is_refused_as_a_value_error` cover it.
+4. **The checked-in examples call the neural loaders with raw `.dat` paths
+   (medium) — fixed.** `example/example.py` and
+   `example/example-with-face-recognition.py` predate this design change and
+   still called `load_dnn_gender_classifier`/`load_dnn_age_predictor` with
+   `models/dnn_*_v1.dat`, which `_load_neural()` now unconditionally refuses;
+   running either script as checked in raises `ValueError` immediately.
+   Confirmed by running `example/example.py`. Fixed by dropping the three
+   explicit loader calls in favor of the zero-configuration constructor (the
+   bundled models are the converted equivalent of the same source files), with
+   a comment noting `load_shape_predictor` still works directly for anyone who
+   wants to point at their own five-point model. A full rewrite of these
+   examples (headless execution, relative paths, dropping the default
+   `face_recognition` story) is PR-7's documented scope (see
+   spec/PR-7.md's Work item 5); this fix only removes the crash.
+5. **`self.skipTest()` inside a `subTest()` loop could exit the whole test
+   method (medium) — investigated, does not reproduce here.** This is a real
+   historical unittest gotcha, but Python fixed `subTest` to scope
+   `SkipTest` to just that iteration (confirmed empirically: a minimal
+   repro with a `skipTest()` inside a four-iteration `subTest` loop, run
+   under this project's own interpreter — CPython 3.13.15, inside this
+   project's target 3.12–3.14 matrix — completes all four iterations and
+   skips only the first). `tests/parity/test_end_to_end.py`'s
+   `test_exact_results_on_every_document` already behaves correctly on every
+   Python version this project supports; nothing changed.
+6. **Bundle containment could be bypassed with a symlink (medium) — fixed.**
+   `_check_flat_filename()` (finding 3 from the first review round) only
+   rejects traversal spelled out in the manifest's `filename` string; a flat,
+   innocent-looking name can still be a symlink on disk pointing outside the
+   bundle, which `_resource()` followed without complaint, contradicting
+   `from_model_dir()`'s "backed entirely by this directory" guarantee.
+   Confirmed by symlinking `age-v1.onnx` to a file outside the bundle
+   directory and reading it through `model_bytes()`. `_resource()` now
+   resolves the joined path and checks it stays under the bundle root (a
+   no-op for the installed package's own resources, and for any
+   `Traversable` implementation that is not a real filesystem path — the
+   only place a caller-controlled symlink can appear is an explicit
+   `load_bundle()` directory). `test_symlinked_neural_artifact_outside_the_
+   bundle_is_refused`, `test_symlinked_shape_predictor_outside_the_bundle_
+   is_refused`, and `test_symlink_that_stays_inside_the_bundle_is_accepted`
+   (proving the fix does not reject legitimate in-bundle symlinks) cover it.
+7. **Successful custom-model tests still use byte-identical weights (low) —
+   acknowledged, not changed.** `tests/bundles.py`'s `full_bundle()` copies
+   the installed ONNX files verbatim, so the existing tests prove a
+   replacement bundle was *installed* (via `.bundle.origin`/network-identity
+   assertions, per the first review round's finding 5) but not that a
+   structurally valid graph with genuinely different weights is both accepted
+   and actually executed. A true test of that would need to build a second,
+   distinct ONNX graph at test time, which needs the `onnx` graph-building
+   library — a maintainer-tooling dependency (`tools/conversion/
+   requirements.txt`) this project deliberately keeps out of the runtime
+   and, so far, out of the `tests/` dependency surface too (see PR-3's "Keep
+   conversion/oracle/test tools out of runtime wheel dependencies"). Adding it
+   as a real test-suite dependency is a scope decision beyond this fix, not
+   an oversight; left open rather than either skipped silently or added
+   without that decision being made deliberately.
+8. **Removed hash checks stayed documented in two docstrings (low) — fixed.**
+   `_inference.py`'s `NeuralNetwork.ensure_loaded()` and `_faces.py`'s
+   `FaceFrontend.__init__()` still listed "the artifact fails its hash check"
+   as a `ValueError` cause after the design change removed hash checking
+   entirely. Both docstrings now just describe the load/signature failures
+   that can actually occur.
+9. **Follow-up specs retained contradictory hash requirements (low) — fixed.**
+   spec/PR-7.md's installation-smoke-test bullet still said "legacy known-
+   `.dat` loading" without qualifying that only the shape predictor's `.dat`
+   loading survived the design change; reworded with a pointer to this
+   section. spec/PR-3.md's original `## Work`/`## Tests` sections and review-
+   follow-up finding 1 still read as describing active hash-verification
+   behavior; the existing "Updated after PR-5" note was expanded to say
+   explicitly that it supersedes those too, rather than rewriting text that
+   is meant to stay a historical record of the original ask.

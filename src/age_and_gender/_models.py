@@ -25,6 +25,7 @@ never required and never used to gate loading.
 from __future__ import annotations
 
 import json
+import math
 import os
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -34,6 +35,8 @@ from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any, Final
+
+import numpy as np
 
 from ._types import Task
 
@@ -249,7 +252,10 @@ class ModelBundle:
             yield path
 
     def _resource(self, name: str) -> Traversable:
-        return self._root.joinpath(name)
+        resource = self._root.joinpath(name)
+        if isinstance(resource, Path):
+            _check_contained(resource, self._root, self._origin, name)
+        return resource
 
 
 def load_bundle(directory: str | os.PathLike[str]) -> ModelBundle:
@@ -392,6 +398,28 @@ def _check_flat_filename(filename: str, origin: str, label: str) -> None:
         )
 
 
+def _check_contained(resource: Path, root: Traversable, origin: str, name: str) -> None:
+    """Reject a resource that resolves outside the bundle root.
+
+    `_check_flat_filename()` only rejects traversal spelled out in the
+    manifest's `filename` string; a flat, innocent-looking name can still be a
+    symlink on disk that points elsewhere. A directory-backed bundle root is a
+    real `Path`, so its resolved target can be checked directly; this is a
+    no-op for the installed package's own (non-symlinked) resources and for
+    any other `Traversable` implementation that isn't filesystem-backed.
+    """
+    try:
+        resolved = resource.resolve(strict=True)
+    except OSError:
+        return
+    root_path = root if isinstance(root, Path) else Path(str(root))
+    if not resolved.is_relative_to(root_path.resolve()):
+        raise ValueError(
+            f"{origin}: {name} resolves outside the bundle directory "
+            "(a symlink escaping the bundle is not accepted)"
+        )
+
+
 def _optional_section(manifest: Mapping[str, Any], *path: str) -> Mapping[str, Any] | None:
     """Like `_section()`, but returns `None` instead of raising when absent.
 
@@ -457,18 +485,32 @@ def _check_graph_signature(manifest: Mapping[str, Any], task: Task, origin: str)
         )
     size = CHIP_SIZES[task]
     expected_input = ["N", 3, size, size]
-    if list(model_input.get("shape", [])) != expected_input:
+    if _as_list_or_none(model_input.get("shape")) != expected_input:
         raise ValueError(
             f"{origin}: manifest models.{task}.input.shape must be {expected_input}, "
             f"got {model_input.get('shape')!r}"
         )
     expected_output = ["N", CLASS_COUNTS[task]]
-    if list(model_output.get("shape", [])) != expected_output:
+    if _as_list_or_none(model_output.get("shape")) != expected_output:
         raise ValueError(
             f"{origin}: manifest models.{task}.output.shape must be {expected_output}, "
             f"got {model_output.get('shape')!r}"
         )
     return size
+
+
+def _as_list_or_none(value: Any) -> list[Any] | None:
+    """Return `value` if it is already a list, `[]` for a missing/null field.
+
+    Anything else (a bare number, bool, string, or object) is not a shape or
+    label list under any manifest this format allows, so it is reported by
+    the caller's own mismatch message instead of being coerced through
+    `list()`, which raises a bare `TypeError` on a non-iterable value such as
+    an int or `null`.
+    """
+    if value is None:
+        return []
+    return value if isinstance(value, list) else None
 
 
 def _parse_normalization(manifest: Mapping[str, Any], task: Task, origin: str) -> Normalization:
@@ -484,6 +526,15 @@ def _parse_normalization(manifest: Mapping[str, Any], task: Task, origin: str) -
     ):
         raise ValueError(
             f"{origin}: manifest models.{task}.input.normalization.means must be three numbers"
+        )
+    with np.errstate(over="ignore"):
+        means_are_finite = all(
+            math.isfinite(value) and np.isfinite(np.float32(value)) for value in means
+        )
+    if not means_are_finite:
+        raise ValueError(
+            f"{origin}: manifest models.{task}.input.normalization.means must be finite "
+            "and representable as float32"
         )
     scale = section.get("scale")
     if scale != NORMALIZATION_SCALE:
@@ -501,7 +552,7 @@ def _parse_labels(model: Mapping[str, Any], task: Task, origin: str) -> tuple[st
     if task != "gender":
         return None
     labels = model.get("labels")
-    if list(labels or []) != list(GENDER_LABELS):
+    if _as_list_or_none(labels) != list(GENDER_LABELS):
         raise ValueError(
             f"{origin}: manifest models.gender.labels must be {list(GENDER_LABELS)}, got {labels!r}"
         )

@@ -396,11 +396,104 @@ class UnsupportedManifestTests(TempBundleTestCase):
 
         self.assertRejects(manifest_only(self.tmp / "sha-type", wrong_type), "artifact.sha256")
 
+    def test_null_input_shape_is_refused_as_a_value_error(self) -> None:
+        """`list(None)` would raise a raw TypeError; a null shape must be
+        reported the same documented way as a missing or wrong-length one.
+        """
+
+        def nullify(manifest: dict) -> None:
+            manifest["models"]["age"]["input"]["shape"] = None
+
+        self.assertRejects(manifest_only(self.tmp / "null-shape", nullify), "input.shape")
+
+    def test_non_list_output_shape_is_refused_as_a_value_error(self) -> None:
+        def wrong_type(manifest: dict) -> None:
+            manifest["models"]["gender"]["output"]["shape"] = 7
+
+        self.assertRejects(manifest_only(self.tmp / "int-shape", wrong_type), "output.shape")
+
+    def test_non_list_gender_labels_is_refused_as_a_value_error(self) -> None:
+        """`list(labels or [])` would raise a raw TypeError for a truthy
+        non-iterable value such as a bare int.
+        """
+
+        def wrong_type(manifest: dict) -> None:
+            manifest["models"]["gender"]["labels"] = 7
+
+        self.assertRejects(manifest_only(self.tmp / "int-labels", wrong_type), "labels")
+
+    def test_nan_normalization_mean_is_refused(self) -> None:
+        def nanify(manifest: dict) -> None:
+            manifest["models"]["age"]["input"]["normalization"]["means"][0] = float("nan")
+
+        self.assertRejects(manifest_only(self.tmp / "nan-mean", nanify), "finite")
+
+    def test_infinite_normalization_mean_is_refused(self) -> None:
+        def infinitize(manifest: dict) -> None:
+            manifest["models"]["age"]["input"]["normalization"]["means"][1] = float("inf")
+
+        self.assertRejects(manifest_only(self.tmp / "inf-mean", infinitize), "finite")
+
+    def test_float32_overflowing_normalization_mean_is_refused(self) -> None:
+        """Finite as float64 but `inf` once cast to float32, the dtype every
+        network actually computes in.
+        """
+
+        def overflow(manifest: dict) -> None:
+            manifest["models"]["age"]["input"]["normalization"]["means"][2] = 1e40
+
+        self.assertRejects(manifest_only(self.tmp / "overflow-mean", overflow), "finite")
+
     def test_rejected_manifests_do_not_disturb_the_installed_bundle(self) -> None:
         with self.assertRaises(ValueError):
             load_bundle(manifest_only(self.tmp / "bad", lambda m: m.pop("runtime")))
         self.assertIsInstance(bundled_models(), ModelBundle)
         self.assertEqual(bundled_models().bundle_id, "age-and-gender-v1")
+
+
+class SymlinkContainmentTests(TempBundleTestCase):
+    """`_check_flat_filename()` only rejects traversal spelled out in the
+    manifest's filename string; a flat name that is itself a symlink pointing
+    outside the bundle directory must be refused too, or `from_model_dir()`'s
+    "backed entirely by this directory" guarantee would not hold.
+    """
+
+    def test_symlinked_neural_artifact_outside_the_bundle_is_refused(self) -> None:
+        bundle_dir = full_bundle(self.tmp / "symlinked-age")
+        target = self.tmp / "outside.onnx"
+        target.write_bytes(b"not a real model, just needs to exist")
+        artifact = bundle_dir / "age-v1.onnx"
+        artifact.unlink()
+        artifact.symlink_to(target)
+        with self.assertRaises(ValueError) as caught:
+            load_bundle(bundle_dir).model_bytes("age")
+        self.assertIn("outside the bundle directory", str(caught.exception))
+
+    def test_symlinked_shape_predictor_outside_the_bundle_is_refused(self) -> None:
+        bundle_dir = full_bundle(self.tmp / "symlinked-predictor")
+        target = self.tmp / "outside.dat"
+        target.write_bytes(b"not a real predictor, just needs to exist")
+        artifact = bundle_dir / "shape_predictor_5_face_landmarks.dat"
+        artifact.unlink()
+        artifact.symlink_to(target)
+        with (
+            self.assertRaises(ValueError) as caught,
+            load_bundle(bundle_dir).shape_predictor_file(),
+        ):
+            pass
+        self.assertIn("outside the bundle directory", str(caught.exception))
+
+    def test_symlink_that_stays_inside_the_bundle_is_accepted(self) -> None:
+        """A symlink is only refused for escaping the bundle root, not for
+        existing at all: this would be a false positive if it were rejected.
+        """
+        bundle_dir = full_bundle(self.tmp / "internal-symlink")
+        artifact = bundle_dir / "age-v1.onnx"
+        real_bytes = artifact.read_bytes()
+        renamed = bundle_dir / "age-v1-real.onnx"
+        artifact.rename(renamed)
+        artifact.symlink_to(renamed)
+        self.assertEqual(load_bundle(bundle_dir).model_bytes("age"), real_bytes)
 
 
 class ManifestRoundTripTests(TempBundleTestCase):

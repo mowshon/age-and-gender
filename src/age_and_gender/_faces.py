@@ -88,8 +88,8 @@ class FaceFrontend:
             FileNotFoundError: `predictor` is not given and the bundle is
                 missing the landmark artifact.
             ValueError: `predictor` is not given and the bundle's landmark
-                artifact fails its hash check, cannot be loaded as a shape
-                predictor, or does not produce five landmark parts.
+                artifact cannot be loaded as a shape predictor, or does not
+                produce five landmark parts.
         """
         self._bundle = bundle
         self._detector = dlib.get_frontal_face_detector()

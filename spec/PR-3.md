@@ -171,7 +171,13 @@ labels — all still enforced exactly as built here), not cryptographically.
 deleted once nothing used them for gating. See spec/PR-5.md's "Design change"
 section for the full rationale and consequences. Everything else in this
 section (session lifecycle, numeric processing, package scaffold) is
-unaffected.
+unaffected. This same removal supersedes every other hash/SHA-256 mention
+above and below this note — the "Model resources" and "Tests" bullets in the
+original `## Work`/`## Tests` sections, and "Review follow-ups" finding 1's
+"verification is now unconditional on every read" (there is no verification
+of any kind any more, conditional or not) — all describe the pre-PR-5 design
+this note replaces, kept as a historical record rather than rewritten in
+place.
 
 ### Measured parity
 

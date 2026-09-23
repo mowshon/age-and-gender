@@ -60,9 +60,11 @@ for release staging, use the candidate artifact index with explicit version.
 Also smoke-test the ordinary documented `pip install` command. Retain logs
 showing every dependency resolved to a wheel and no source-build subprocess ran.
 
-After installation, block network access and run bundled-model prediction,
-legacy known-`.dat` loading, explicit-box prediction, and the compatibility
-corpus. Headless environments must work without X11 development packages.
+After installation, block network access and run bundled-model prediction, the
+shape predictor's legacy `.dat` loading (the two neural `.dat` files are not
+loadable at all, by design — see spec/PR-5.md's "Design change"),
+explicit-box prediction, and the compatibility corpus. Headless environments
+must work without X11 development packages.
 
 Test unsupported platform resolution deliberately so documentation does not
 suggest users fix a missing wheel by installing a compiler. No implicit fallback
