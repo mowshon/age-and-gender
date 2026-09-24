@@ -21,11 +21,11 @@ on:
         default: ""
 
 jobs:
-  # The full platform/Python matrix, wheel build, install-smoke (including
-  # the glibc floor and the ordinary `pip install age-and-gender` command),
-  # and maintainer-tooling check — the same gate every PR to master has to
-  # pass. A tag push does not otherwise trigger ci.yml (its own triggers are
-  # branch pushes and pull requests), so calling it here is what makes a
+  # The full platform/Python matrix, wheel build, and install-smoke (including
+  # the glibc floor and ordinary `pip install age-and-gender` command) are the
+  # same gate every change to master has to pass. A tag push does not otherwise
+  # trigger ci.yml, whose own triggers are branch pushes and pull requests, so
+  # calling it here is what makes a
   # release actually depend on the full matrix, not just this workflow's own
   # single-platform build.
   ci:
@@ -93,10 +93,8 @@ jobs:
           python-version: "3.13"
       # TestPyPI does not mirror ordinary dependencies, so runtime
       # dependencies (numpy, onnxruntime, dlib-bin, Pillow) still resolve
-      # from the real index; only the package itself comes from staging, by
-      # the exact version this run just published, per spec/PR-7.md's
-      # "for release staging, use the candidate artifact index with explicit
-      # version."
+      # from the real index; only the package itself comes from staging, at
+      # the exact version this run just published.
       - name: Wait for the package to become installable
         run: |
           set -eu
@@ -115,7 +113,7 @@ jobs:
           exit 1
       - run: python -m pip check
       - name: Offline smoke test against the TestPyPI install
-        run: python tools/ci/smoke_install.py
+        run: python .github/scripts/smoke_install.py
 
   publish-pypi:
     name: Publish to PyPI

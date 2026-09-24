@@ -11,7 +11,6 @@ from pathlib import Path
 
 from age_and_gender._models import ModelBundle, bundled_models, load_bundle
 from tests.bundles import (
-    CONVERSION_BUNDLE,
     PACKAGE_MODELS,
     ROOT,
     corrupt_bytes,
@@ -86,7 +85,7 @@ class BundledResourceTests(unittest.TestCase):
         self.assertEqual(runtime.intra_op_num_threads, 1)
         self.assertEqual(runtime.inter_op_num_threads, 1)
 
-    def test_normalization_and_age_weights_come_from_the_converter(self) -> None:
+    def test_normalization_and_age_weights_come_from_the_manifest(self) -> None:
         bundle = bundled_models()
         for spec in (bundle.age, bundle.gender):
             self.assertEqual(spec.normalization.means, (122.781998, 117.000999, 104.297997))
@@ -117,11 +116,9 @@ class BundledResourceTests(unittest.TestCase):
         self.assertTrue(result["version"])
 
     def test_notices_ship_with_the_models_and_match_their_digests(self) -> None:
-        """A repo-content check: the manifest's recorded notice digests still
-        match the shipped notice files. This is unrelated to model loading
-        (notices are never read by `_models.py` at runtime, by design — see
-        spec/PR-3.md's review follow-ups), so it hashes directly rather than
-        through any package API.
+        """Check that recorded notice digests match the shipped notice files.
+
+        Notices are not read by the runtime, so this hashes them directly.
         """
         manifest = package_manifest()
         notices = (
@@ -133,14 +130,6 @@ class BundledResourceTests(unittest.TestCase):
             path = PACKAGE_MODELS / notice["path"]
             self.assertTrue(path.is_file(), notice["path"])
             self.assertEqual(_sha256(path), notice["sha256"], notice["path"])
-
-    def test_package_manifest_agrees_with_the_conversion_bundle(self) -> None:
-        """The package bundle is assembled from PR-2's artifacts, not re-derived."""
-        conversion = json.loads((CONVERSION_BUNDLE / "manifest.json").read_text(encoding="utf-8"))
-        package = package_manifest()
-        self.assertEqual(package["bundle_kind"], "package")
-        for key, value in conversion.items():
-            self.assertEqual(package[key], value, key)
 
 
 class UnverifiedArtifactContentTests(TempBundleTestCase):
@@ -231,9 +220,11 @@ class UnsupportedManifestTests(TempBundleTestCase):
             "schema_version",
         )
 
-    def test_conversion_bundle_is_not_a_package_bundle(self) -> None:
-        """PR-2's artifact directory has no landmark model, and says so clearly."""
-        self.assertRejects(CONVERSION_BUNDLE, "bundle_kind", "build_bundle.py")
+    def test_unknown_bundle_kind_is_refused(self) -> None:
+        bundle = manifest_only(
+            self.tmp / "kind", lambda manifest: manifest.__setitem__("bundle_kind", "conversion")
+        )
+        self.assertRejects(bundle, "bundle_kind")
 
     def test_missing_runtime_block_is_refused(self) -> None:
         self.assertRejects(

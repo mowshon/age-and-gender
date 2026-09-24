@@ -2,8 +2,8 @@
 
 Unlike tests/parity/test_frontend.py (frontend only) and
 tests/parity/test_chip_inference.py (pre-extracted chips only), this drives
-the full public pipeline exactly as spec/PR-5.md requires: a raw decoded image
-in, the legacy result dictionaries out, compared for exact equality.
+the full public pipeline: a raw decoded image in, the compatible result
+dictionaries out, compared for exact equality.
 """
 
 from __future__ import annotations
@@ -21,16 +21,6 @@ from tests.golden import GoldenDocument, golden_documents
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def image_available(document: GoldenDocument) -> bool:
-    """Whether the document's source image exists in this checkout/sdist.
-
-    Mirrors tests/parity/test_frontend.py's helper of the same name:
-    ``dogs.golden.json`` sources from a vendored dlib example image that is
-    deliberately not part of the sdist.
-    """
-    return (ROOT / document.source_path).is_file()
-
-
 def decode(document: GoldenDocument) -> Image.Image:
     return Image.open(ROOT / document.source_path)
 
@@ -44,7 +34,7 @@ class EndToEndParityTests(unittest.TestCase):
         cls.documents = golden_documents()
 
     def test_corpus_is_the_frozen_one(self) -> None:
-        self.assertEqual(len(self.documents), 4)
+        self.assertEqual(len(self.documents), 3)
         self.assertEqual(sum(len(document.faces) for document in self.documents), 11)
 
     def resolve_boxes(self, document: GoldenDocument) -> list[list[int]] | None:
@@ -56,8 +46,6 @@ class EndToEndParityTests(unittest.TestCase):
     def test_exact_results_on_every_document(self) -> None:
         for document in self.documents:
             with self.subTest(document=document.name):
-                if not image_available(document):
-                    self.skipTest(f"{document.source_path} is not available in this checkout")
                 with decode(document) as image:
                     array = as_rgb_array(image.convert("RGB"))
                 boxes = self.resolve_boxes(document)
@@ -87,8 +75,6 @@ class EndToEndParityTests(unittest.TestCase):
 
     def test_empty_box_list_behaves_like_omitted_boxes(self) -> None:
         document = next(doc for doc in self.documents if doc.box_mode == "detect")
-        if not image_available(document):
-            self.skipTest(f"{document.source_path} is not available in this checkout")
         with decode(document) as image:
             array = as_rgb_array(image.convert("RGB"))
         self.assertEqual(self.predictor.predict(array, []), self.predictor.predict(array, None))

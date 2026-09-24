@@ -1,4 +1,4 @@
-"""Chip-level parity of the packaged runtime against the PR-1 oracle fixtures."""
+"""Chip-level parity of the packaged runtime against frozen fixtures."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ AGE_EXPECTATION_ATOL = 1e-4
 
 
 class ChipInferenceTests(unittest.TestCase):
-    """Runs the installed bundle, not the conversion artifacts."""
+    """Run chip inference through the installed bundle."""
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -31,7 +31,7 @@ class ChipInferenceTests(unittest.TestCase):
         return network.probabilities([face.chip(task) for face in faces])
 
     def test_corpus_is_the_frozen_one(self) -> None:
-        self.assertEqual(len(self.images), 4)
+        self.assertEqual(len(self.images), 3)
         self.assertEqual(len(self.faces), 11)
 
     def test_preprocessing_reproduces_the_frozen_input_tensors(self) -> None:

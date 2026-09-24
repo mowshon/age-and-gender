@@ -1,4 +1,0 @@
-numpy==2.3.3
-onnx==1.19.0
-onnxruntime==1.23.0
-pytest==8.4.2

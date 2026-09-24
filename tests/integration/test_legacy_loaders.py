@@ -1,12 +1,8 @@
-"""``load_shape_predictor``/``load_dnn_age_predictor``/``load_dnn_gender_classifier``.
+"""Compatibility tests for the three explicit model loader methods.
 
-Covers the compatibility boundary spec/PR-5.md draws for the three loader
-methods. The two neural loaders only accept an ``.onnx`` file with a sibling
-``manifest.json`` naming it for that task — there is no hash-based
-recognition of the original ``.dat`` weights, since loading is validated
-structurally, not cryptographically (see spec/PR-3.md's review follow-ups and
-``_models.py``'s module docstring). ``load_shape_predictor`` is unaffected: it
-loads any compatible ``.dat`` file directly through dlib, as before.
+The neural loaders accept an ``.onnx`` file whose sibling ``manifest.json``
+names it for the requested task. Loading is structural rather than hash-based.
+The shape-predictor loader accepts a compatible dlib ``.dat`` file directly.
 """
 
 from __future__ import annotations
@@ -100,7 +96,7 @@ class NeuralLoaderTests(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             predictor.load_dnn_age_predictor(ROOT / "no-such-file.onnx")
 
-    def test_raw_dat_weights_are_refused_with_conversion_guidance(self) -> None:
+    def test_raw_dat_weights_are_refused(self) -> None:
         """The original dlib .dat weights cannot be loaded directly: there is
         no runtime path from a proprietary dlib serialization to ONNX. The
         refusal happens before the file is read, so a placeholder stands in
@@ -112,7 +108,7 @@ class NeuralLoaderTests(unittest.TestCase):
             predictor = AgeAndGender()
             with self.assertRaisesRegex(ValueError, "only .onnx files are accepted") as caught:
                 predictor.load_dnn_age_predictor(age_dat)
-        self.assertIn("tools/conversion", str(caught.exception))
+        self.assertIn("manifest.json", str(caught.exception))
 
     def test_failed_load_leaves_the_previous_model_usable(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

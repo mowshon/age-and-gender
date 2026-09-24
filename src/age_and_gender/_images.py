@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import numpy as np
+from numpy.typing import NDArray
 from PIL import Image
 
 from ._types import Rectangle
@@ -27,7 +28,7 @@ _RECTANGLE_LENGTH = 4
 _MAX_COORDINATE_MAGNITUDE = 2**31 - 1
 
 
-def as_rgb_array(photo: Image.Image | np.ndarray) -> np.ndarray:
+def as_rgb_array(photo: Image.Image | np.ndarray) -> NDArray[np.uint8]:
     """Validate an image and return it as an H x W x 3 uint8 RGB array.
 
     Args:

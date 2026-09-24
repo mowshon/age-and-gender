@@ -26,7 +26,6 @@ from tests.bundles import PACKAGE_MODELS, full_bundle
 from tests.golden import golden_documents, golden_images
 
 ROOT = Path(__file__).resolve().parents[2]
-NO_FACE_IMAGE = ROOT / "tools/vendor/dlib/examples/faces/dogs.jpg"
 
 
 def _load_test_image() -> np.ndarray:
@@ -94,12 +93,9 @@ class ConstructionTests(unittest.TestCase):
                 AgeAndGender.from_model_dir(bundle_dir)
 
     def test_from_model_dir_corrupt_artifact_fails_immediately_not_lazily(self) -> None:
-        """Loading is structural, not hash-based (spec/PR-3.md's review
-        follow-ups), so the artifact has to be corrupt enough to actually
-        fail dlib's/ONNX Runtime's own parsing, not merely differ from a
-        recorded digest; a single flipped byte in an otherwise well-formed
-        file is not guaranteed to do that, so this replaces the whole file
-        with random bytes of a different size instead.
+        """Loading is structural, not hash-based, so the artifact must fail
+        the backend parser rather than merely differ from a recorded digest.
+        Replacing the whole file makes that failure deterministic.
         """
         with tempfile.TemporaryDirectory() as directory:
             bundle_dir = full_bundle(Path(directory) / "bundle")
@@ -114,13 +110,8 @@ class PredictionBehaviorTests(unittest.TestCase):
         cls.predictor = AgeAndGender()
 
     def test_no_face_image_returns_empty_list(self) -> None:
-        if not NO_FACE_IMAGE.is_file():
-            self.skipTest(
-                "tools/vendor/dlib/examples/faces/dogs.jpg is not available in this checkout"
-            )
-        with Image.open(NO_FACE_IMAGE) as image:
-            array = as_rgb_array(image.convert("RGB"))
-        self.assertEqual(self.predictor.predict(array), [])
+        image = np.zeros((480, 640, 3), dtype=np.uint8)
+        self.assertEqual(self.predictor.predict(image), [])
 
     def test_repeated_predictions_reuse_state_and_agree(self) -> None:
         image = _load_test_image()

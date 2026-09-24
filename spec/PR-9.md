@@ -169,8 +169,9 @@ Also delete these local, untracked directories: `rm -rf models/ build/`.
 - `tests/integration/test_package_resources.py::test_no_checkout_source_is_on_the_installed_runtime_path`:
   drop `"tools"` from the forbidden prefixes and from its docstring.
 
-Expected result: 253 tests (273 − 9 − 10 − 1) and **0 skipped**, both locally
-and in every CI cell. The skip lane that ran only when `onnx` was installed no
+Expected result on POSIX: 253 tests (273 − 9 − 10 − 1) and **0 skipped**. Windows
+retains the existing read-only-permissions skip because `chmod` does not model
+that check there. The skip lane that ran only when `onnx` was installed no
 longer exists.
 
 ### 4. Runtime source (`src/age_and_gender`)
@@ -315,30 +316,15 @@ These rules apply to every comment, docstring, and Markdown file outside
 
 Per file:
 
-- **`README.md`**
-  - *Supported platforms*: drop "(see `spec/INVESTIGATION.md` …)" and the
-    sentence that links PR-8.
-  - *Bundled and custom models*: replace the paragraph that starts "Converting
-    a different trained network is not currently automated". The new text says
-    the bundled ONNX files are the original weights, converted once. It
-    describes a custom bundle as an `.onnx` graph plus a `manifest.json`
-    modeled on the shipped `src/age_and_gender/models/manifest.json`, and lists
-    what the manifest must declare:
-    - the task and the input/output names;
-    - float32 RGB input `[N, 3, S, S]` and output `[N, classes]`;
-    - channel means with a 1/256 scale, and softmax inside the graph;
-    - labels `["female", "male"]` and the 81 age weights;
-    - the runtime block.
-  - *What "same results" means*: replace the `spec/README.md` pointer with a
-    pointer to `tests/parity/`.
-  - *Performance*: remove the latency table and every `benchmarks/` link;
-    once the harness is gone, nothing in the repository reproduces those
-    numbers. Replace them with one or two sentences without figures: the
-    ONNX Runtime sessions and the landmark model are loaded once and reused,
-    so a `predict()` call no longer copies the image and both networks the way
-    1.x did.
-  - *Development*: drop the `spec/README.md` link and the "Maintainer-only
-    tooling … lives under `tools/`" paragraph.
+- **`README.md`**: it may remain as an empty tracked file until publication
+  documentation is written at the final packaging stage. Keep the file because
+  `pyproject.toml` uses it as project metadata and includes it in the sdist. If
+  it is populated before then, it must describe only the current repository,
+  contain no internal-plan or removed-path references, and make no numerical
+  performance claims. While it is empty, CI runs `twine check` without
+  `--strict`, because Twine warns that the intentionally absent long description
+  is missing. Restore strict metadata validation when publication documentation
+  is added.
 - **`AGENTS.md`**: drop the legacy-oracle bullet and the "Migration
   specification" section (see Open decisions).
 - **Test code**: fix every hit of the second verification grep. The spec/PR
@@ -441,15 +427,16 @@ The three `git` commands must print nothing. Before this PR, the first two print
   C++, CMake, or vendored third-party source is tracked.
 - [ ] All three verification `git` commands print nothing.
 - [ ] `ruff check .` passes.
-- [ ] `pytest` passes with no skips, including the three parity files from
-  Findings §2 on the 3-document, 11-face corpus.
+- [ ] `pytest` passes with no skips on POSIX, including the three parity files
+  from Findings §2 on the 3-document, 11-face corpus. Windows has only the
+  existing read-only-permissions skip.
 - [ ] `mypy --strict` reports no errors in `src/age_and_gender`, apart from the
   missing dlib stubs.
 - [ ] The wheel's `.onnx` and `.dat` files are byte-identical to before.
   `models/manifest.json` differs only by the two removed provenance fields.
 - [ ] No CI job builds C++ or installs `onnx`. Every remaining job passes,
   including install-smoke from `.github/scripts/smoke_install.py`.
-- [ ] `README.md` and `AGENTS.md` describe only what exists in the repository;
-  the README makes no performance claim with figures.
+- [ ] `README.md` is empty or describes only current repository contents and
+  makes no numerical performance claim; `AGENTS.md` describes only what exists.
 - [ ] The PR description records the SHA of the last commit that still contains
   `tools/`, for anyone who needs the conversion pipeline or the oracle again.

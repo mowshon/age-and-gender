@@ -10,7 +10,6 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_MODELS = ROOT / "src/age_and_gender/models"
-CONVERSION_BUNDLE = ROOT / "tools/conversion/artifacts/v1"
 
 Mutation = Callable[[dict[str, Any]], None]
 

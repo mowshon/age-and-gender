@@ -1,9 +1,9 @@
-"""Frontend equality of the dlib-bin frontend against the PR-1 oracle fixtures.
+"""Frontend equality against the frozen compatibility fixtures.
 
 Every image, box, landmark, and chip here is compared for exact equality, not
 tolerance: the legacy contract requires the detector, landmark predictor, and
-individual chip extraction to reproduce the oracle bit for bit (spec/PR-1.md's
-parity thresholds table). A tolerance would hide a real frontend drift.
+individual chip extraction to reproduce the frozen values bit for bit. A
+tolerance would hide a real frontend drift.
 """
 
 from __future__ import annotations
@@ -24,19 +24,6 @@ from age_and_gender._models import bundled_models
 from tests.golden import GoldenDocument, golden_documents
 
 ROOT = Path(__file__).resolve().parents[2]
-
-
-def image_available(document: GoldenDocument) -> bool:
-    """Whether the document's source image exists in this checkout/sdist.
-
-    ``dogs.golden.json`` sources from ``tools/vendor/dlib/examples/faces/dogs.jpg``,
-    which is deliberately not part of the sdist (its manifest entry notes it
-    "must not be redistributed separately"; see tools/legacy/README.md). Tests
-    that need a document's pixels skip it, rather than fail, when its image is
-    unavailable, so this module still runs from a built sdist that lacks
-    ``libs/``.
-    """
-    return (ROOT / document.source_path).is_file()
 
 
 def decode(document: GoldenDocument) -> np.ndarray:
@@ -60,7 +47,7 @@ class FrontendParityTests(unittest.TestCase):
         cls.documents = golden_documents()
 
     def test_corpus_is_the_frozen_one(self) -> None:
-        self.assertEqual(len(self.documents), 4)
+        self.assertEqual(len(self.documents), 3)
         self.assertEqual(sum(len(document.faces) for document in self.documents), 11)
 
     def resolve_boxes(self, document: GoldenDocument) -> list[list[int]] | None:
@@ -72,8 +59,6 @@ class FrontendParityTests(unittest.TestCase):
     def test_exact_rectangles_landmarks_and_chips_on_every_document(self) -> None:
         for document in self.documents:
             with self.subTest(document=document.name):
-                if not image_available(document):
-                    self.skipTest(f"{document.source_path} is not available in this checkout")
                 image = decode(document)
                 boxes = self.resolve_boxes(document)
                 extractions = self.frontend.extract(image, boxes)
@@ -102,8 +87,6 @@ class FrontendParityTests(unittest.TestCase):
             if document.box_mode != "detect":
                 continue
             with self.subTest(document=document.name):
-                if not image_available(document):
-                    self.skipTest(f"{document.source_path} is not available in this checkout")
                 image = decode(document)
                 rectangles = self.frontend.detect(image)
                 self.assertEqual(
@@ -147,22 +130,16 @@ class FrontendParityTests(unittest.TestCase):
         self.assertEqual([e.rectangle for e in extractions], [f.rectangle for f in explicit.faces])
 
     def test_no_face_image_returns_empty(self) -> None:
-        no_face = next(
-            doc for doc in self.documents if doc.faces == [] and doc.box_mode == "detect"
-        )
-        if not image_available(no_face):
-            self.skipTest(f"{no_face.source_path} is not available in this checkout")
-        image = decode(no_face)
+        image = np.zeros((480, 640, 3), dtype=np.uint8)
         self.assertEqual(self.frontend.detect(image), [])
         self.assertEqual(self.frontend.extract(image), [])
 
 
 class PaddingPrecisionAndRouteEquivalenceTests(unittest.TestCase):
-    """Retained evidence for two claims tools/legacy/frontend-comparison.md
-    makes: the padding argument is honored at double, not float32, precision,
-    and the get_face_chip convenience route agrees with the production route
-    (get_face_chip_details + extract_image_chip) on the frozen corpus. Without
-    a test, either claim could silently go stale on a future dlib-bin version.
+    """Check padding precision and equivalent single-chip extraction routes.
+
+    The padding argument must retain double precision, and the convenience
+    route must agree with the production route on the frozen corpus.
     """
 
     @classmethod
@@ -211,7 +188,7 @@ class PaddingPrecisionAndRouteEquivalenceTests(unittest.TestCase):
 
 
 class BatchingTrapRegressionTests(unittest.TestCase):
-    """Guards the individual-crop semantics spec/PR-4.md calls out by name.
+    """Guard individual-crop semantics against dlib's different batch route.
 
     On tests/fixtures/legacy's first image, batching the 32x32 extraction with
     dlib's get_face_chips changes 1540, 1665, 1796, 0, and 1599 channel values

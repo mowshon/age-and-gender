@@ -6,10 +6,9 @@ on:
   pull_request:
     branches: [master, refactoring]
   workflow_dispatch: {}
-  # Lets release.yml gate publishing on this entire matrix passing (lint,
-  # every OS/Python cell, conversion parity, the build, every install-smoke
-  # cell, the glibc floor, and the maintainer-tooling build) instead of a
-  # narrower single-platform check of its own.
+  # Lets release.yml gate publishing on lint, every OS/Python cell, the build,
+  # every install-smoke cell, and the glibc floor instead of a narrower
+  # single-platform check of its own.
   workflow_call: {}
 
 concurrency:
@@ -19,8 +18,8 @@ concurrency:
 env:
   # Uploaded once by `build`, reused by every downstream job so the exact
   # same pure-Python wheel is what every platform/Python combination proves
-  # installs and runs, per spec/PR-7.md's compiler-free installation gate,
-  # and what release.yml eventually publishes if this workflow is called.
+  # installs and runs, and what release.yml publishes when this workflow is
+  # called.
   DIST_ARTIFACT: age-and-gender-dist
 
 jobs:
@@ -54,29 +53,10 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e ".[dev]"
       - run: python -m pip check
-      # Exercises unit, integration, and parity tests, including frontend/ONNX
-      # parity against the frozen spec/PR-1.md oracle fixtures. Model-signature
-      # and structural manifest checks live in tests/unit/test_models.py.
-      # Conversion-tooling-only checks (needing `onnx`) skip here by design;
-      # see the conversion-parity job below.
+      # Exercises unit, integration, and parity tests against the frozen
+      # compatibility fixtures. Model-signature and structural manifest checks
+      # live in tests/unit/test_models.py.
       - run: python -m pytest -q
-
-  conversion-parity:
-    name: Conversion tooling parity (onnx)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-          cache: pip
-      - run: python -m pip install --upgrade pip
-      - run: python -m pip install -e ".[dev]"
-      - run: python -m pip install -r tools/conversion/requirements.txt
-      # With `onnx` installed alongside the runtime dependencies,
-      # tests/parity/test_converted_networks.py stops skipping and re-derives
-      # the shipped ONNX graphs' behavior against the frozen fixtures instead.
-      - run: python -m pytest -q tests/parity/test_converted_networks.py -v
 
   build:
     name: Build wheel and sdist
@@ -89,8 +69,7 @@ jobs:
           cache: pip
       - run: python -m pip install --upgrade pip build twine
       # Builds the sdist, then builds a second wheel from that sdist in
-      # isolation, per spec/PR-7.md's "build a second wheel from the source
-      # distribution in isolation".
+      # isolation.
       - run: python -m build --outdir dist
       - name: Inspect archive contents and size
         run: |
@@ -105,10 +84,9 @@ jobs:
             exit 1
           fi
           python -m zipfile -l "$wheel"
-      # Catches malformed metadata/README rendering (spec/PR-7.md: "Validate
-      # metadata/README rendering") before it reaches PyPI, where a bad
-      # long_description would otherwise only surface after upload.
-      - run: twine check --strict dist/*
+      # Keep archive validation active while the intentionally empty README
+      # leaves long-description metadata for the publication stage.
+      - run: twine check dist/*
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ env.DIST_ARTIFACT }}
@@ -144,7 +122,7 @@ jobs:
           python -m pip install --only-binary=:all: "$wheel"
       - run: python -m pip check
       - name: Offline smoke test
-        run: python tools/ci/smoke_install.py
+        run: python .github/scripts/smoke_install.py
       # Best-effort extra proof on Linux: an unprivileged network namespace
       # blocks outbound access entirely, so this additionally shows
       # prediction needs no network at all, not just that it happens not to
@@ -155,12 +133,12 @@ jobs:
       - name: Offline smoke test, network namespace blocked (best effort)
         if: runner.os == 'Linux'
         continue-on-error: true
-        run: unshare --net --map-root-user python tools/ci/smoke_install.py
+        run: unshare --net --map-root-user python .github/scripts/smoke_install.py
 
   # Every other cell above installs on whatever glibc the ubuntu-latest/
   # ubuntu-24.04-arm runner images happen to ship (materially newer than the
-  # advertised floor), so none of them actually prove the README's "glibc
-  # 2.28+" claim. These two do, by installing and running inside the exact
+  # supported floor), so none of them actually prove glibc 2.28 compatibility.
+  # These two do, by installing and running inside the exact
   # manylinux_2_28 images ONNX Runtime and dlib-bin build their wheel
   # platform tags against.
   glibc-floor:
@@ -192,7 +170,7 @@ jobs:
           wheel=$(ls dist/*.whl)
           "$PY" -m pip install --only-binary=:all: "$wheel"
           "$PY" -m pip check
-          "$PY" tools/ci/smoke_install.py
+          "$PY" .github/scripts/smoke_install.py
 
   # Exercises the literal documented command, `pip install age-and-gender`,
   # rather than only ever installing a local wheel path: --find-links adds
@@ -213,18 +191,3 @@ jobs:
       - run: python -m pip install --upgrade pip
       - run: python -m pip install --find-links dist age-and-gender
       - run: python -c "import age_and_gender; print(age_and_gender.__version__)"
-
-  legacy-tooling:
-    name: Maintainer tooling still builds (oracle, exporter)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Configure and build the legacy oracle
-        run: |
-          cmake -S tools/legacy -B build/legacy-oracle -DCMAKE_BUILD_TYPE=Release
-          cmake --build build/legacy-oracle --parallel "$(nproc)"
-          build/legacy-oracle/age_and_gender_legacy_oracle --version
-      - name: Configure and build the ONNX conversion exporter/probe
-        run: |
-          cmake -S tools/conversion -B build/conversion -DCMAKE_BUILD_TYPE=Release
-          cmake --build build/conversion --parallel "$(nproc)"

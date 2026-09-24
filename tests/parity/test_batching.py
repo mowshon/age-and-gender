@@ -1,4 +1,4 @@
-"""Bounded-batch chunking parity (spec/PR-6.md's "Optimization order" step 3).
+"""Bounded-batch chunking parity.
 
 ``NeuralNetwork.probabilities()`` splits a call larger than its
 ``max_batch_size`` into several ordered ONNX Runtime calls instead of handing
@@ -38,13 +38,9 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class DefaultBoundTests(unittest.TestCase):
-    """The shipped default is the boundary the conversion tooling validated."""
+    """The shipped default bounds each runtime call."""
 
-    def test_default_matches_the_largest_validated_conversion_batch_size(self) -> None:
-        # tools/conversion/validate_conversion.py and
-        # tests/parity/test_converted_networks.py::test_dynamic_batches_match_frozen_outputs
-        # exercise batch sizes 1, 2, 7, and 32; chunking at any other boundary
-        # would run a batch size that was never numerically validated.
+    def test_default_batch_size_is_32(self) -> None:
         self.assertEqual(DEFAULT_MAX_BATCH_SIZE, 32)
 
     def test_networks_use_the_default_bound_unless_overridden(self) -> None:
