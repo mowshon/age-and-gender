@@ -121,3 +121,62 @@ The recommended first release remains PR-7 because it directly addresses the
 installation problem with substantially less numerical reimplementation. This
 conditional track makes the remaining work explicit if eliminating the native
 dlib runtime itself is also a hard requirement.
+
+## Implementation status
+
+The **initial feasibility deliverable only** was delivered on `pr-8`:
+maintainer-only prototype tooling under `tools/conversion/`
+(`export_shape_predictor.cpp`, `probe_shape_predictor.cpp`,
+`build_shape_predictor.py`, `dlib_linalg.py`, `numpy_shape_predictor.py`,
+`numpy_chip_extraction.py`, `shape_predictor_evidence.py`,
+`validate_shape_predictor.py`, `benchmark_numpy_frontend.py`), exercised by
+`tests/parity/test_numpy_shape_predictor_feasibility.py`. Results are in
+`tools/conversion/shape-predictor-feasibility-report.md`.
+
+**Follow-on implementation units A/B/C/D (landmark model, chip extraction,
+HOG detector, `_faces.py` integration) were not attempted.** This PR does not
+change `src/age_and_gender/`, `pyproject.toml`, or any shipped dependency.
+Per this file's own framing ("split implementation into smaller reviewed PRs
+after the initial feasibility experiment"), that was the intended scope
+boundary, not a partial implementation of the larger track.
+
+Initial feasibility deliverable, item by item:
+
+- [x] Export the landmark tree parameters to a versioned NumPy artifact.
+      The builder runs the exporter on the hashed, pinned source file itself.
+      The loader verifies schema, artifact SHA-256, dtypes, shapes, cascade
+      layout, and index ranges.
+- [x] Landmark prediction in Python/NumPy compared with the dlib oracle at
+      every cascade stage: 165/165 (face, cascade) pairs bit-exact against
+      the C++ probe, and replayed in CI from the checked-in `stage-trace.json`.
+- [x] Chip details and single-chip extraction compared on all uint8 pixels:
+      exact on the frozen corpus, 10,000 boundary/deep-pyramid synthetic
+      cases (depth up to 5), 5 retained regression cases, and 100,000
+      bit-exact `chip_details` geometries, plus a separate 30,000-case sweep
+      with zero mismatches.
+- [x] Timed against the wheel frontend with the PR-6 protocol (10 warmups ×
+      100 iterations × 5 repeats, equivalent work on both sides, machine,
+      dependency, and thread metadata recorded).
+- [x] Explicit go/no-go report: go on correctness for units A/B; the
+      ~90x-slower per-face frontend is an open performance problem; unit C
+      was not evaluated, so no go/no-go for the whole track.
+
+Acceptance and decision rule, scoped to what this PR covers:
+
+- [x] Exact landmarks and chips under the PR-1 contract, with no tolerance
+      and no known residual. Rectangles/order and public dictionaries
+      depend on the detector and `_faces.py` integration (units C/D) and are
+      **not** covered by this PR.
+- [x] The prototype imports no dlib. Only the maintainer-only validator,
+      benchmark, and parity test import `dlib` to compare against it.
+- [x] `shape-predictor-report.json` and `numpy-frontend-benchmark.json`
+      state the numerical and performance consequences explicitly. The CI
+      test rejects either report if it is stale relative to the current
+      prototype sources, or if any validation section is missing or failed.
+- [x] The HOG detector (unit C) is recorded as an explicit non-attempt, not
+      a silent gap.
+
+Exactness depends on the oracle using scalar, non-FMA double arithmetic, as
+`dlib-bin` 20.0.1 does on x86-64 (built without LAPACK/BLAS). Unit D's
+"all supported CPU platforms" parity run must re-establish this for every
+platform wheel.

@@ -1,0 +1,82 @@
+{
+  "artifact_sha256": "9400085c97d60d770d038af2bfcca550f21f8f241421abcdd6268c3f5b687e91",
+  "code_revision": "6637882089bc3c2b6ddc8933bd69bbbd9825f8afb7a8ad56674e0e04988242f5",
+  "environment": {
+    "cpu_governor": "schedutil",
+    "cpu_model": "AMD Ryzen 5 3600 6-Core Processor",
+    "dependency_versions": {
+      "dlib": "20.0.1",
+      "dlib_use_blas": false,
+      "dlib_use_lapack": false,
+      "numpy": "2.5.3",
+      "numpy_blas": "scipy-openblas 0.3.34.106.0",
+      "pillow": "12.3.0"
+    },
+    "environment_threads": {
+      "MKL_NUM_THREADS": null,
+      "OMP_NUM_THREADS": null,
+      "OPENBLAS_NUM_THREADS": null
+    },
+    "logical_cores": 12,
+    "machine": "x86_64",
+    "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+    "python": "3.13.15",
+    "python_compiler": "GCC 11.4.0",
+    "timed_code_threads": "both timed paths are single-threaded: dlib's shape predictor and chip extraction run on the calling thread, and the NumPy port uses only elementwise ufuncs (no BLAS calls)"
+  },
+  "passed": true,
+  "schema_version": 2,
+  "sections": {
+    "cascade_stages": {
+      "checked": 165,
+      "faces_traced": 11,
+      "failure_count": 0,
+      "failures": [],
+      "passed": true
+    },
+    "chip_fast_path": {
+      "checked": 9,
+      "failure_count": 0,
+      "failures": [],
+      "passed": true
+    },
+    "chip_geometry": {
+      "checked": 100000,
+      "failure_count": 0,
+      "failures": [],
+      "passed": true,
+      "seed": 2027
+    },
+    "frozen_corpus": {
+      "checked": 11,
+      "documents_checked": 4,
+      "failure_count": 0,
+      "failures": [],
+      "passed": true
+    },
+    "live_dlib_synthetic": {
+      "boundary_cases": 8651,
+      "cases_by_max_pyramid_depth": {
+        "0": 929,
+        "1": 1243,
+        "2": 2414,
+        "3": 3206,
+        "4": 1982,
+        "5": 226
+      },
+      "checked": 10000,
+      "failing_cases": [],
+      "failure_count": 0,
+      "failures": [],
+      "max_pyramid_depth": 5,
+      "passed": true,
+      "seed": 2026
+    },
+    "regression_cases": {
+      "checked": 5,
+      "failure_count": 0,
+      "failures": [],
+      "passed": true
+    }
+  }
+}
