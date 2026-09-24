@@ -15,23 +15,30 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import dlib
 from PIL import Image
 
 from age_and_gender import AgeAndGender
 from age_and_gender._images import as_rgb_array
-from tests.bundles import full_bundle
+from tests.bundles import PACKAGE_MODELS, full_bundle
 from tests.golden import golden_images
 
 ROOT = Path(__file__).resolve().parents[2]
-LEGACY_MODELS = ROOT / "example/models"
-AGE_DAT = LEGACY_MODELS / "dnn_age_predictor_v1.dat"
-SHAPE_DAT = LEGACY_MODELS / "shape_predictor_5_face_landmarks.dat"
+# Byte-identical to the original dlib-models download.
+SHAPE_DAT = PACKAGE_MODELS / "shape_predictor_5_face_landmarks.dat"
 EXPECTED_RESULTS = [face.result for face in golden_images()["test-image.golden.json"]]
 
 
 def _test_image_array():
     with Image.open(ROOT / "example/test-image.jpg") as image:
         return as_rgb_array(image.convert("RGB"))
+
+
+def _other_dlib_model(directory: str) -> Path:
+    """Write a genuine dlib-serialized model that is not a shape predictor."""
+    path = Path(directory) / "frontal_face_detector.dat"
+    dlib.get_frontal_face_detector().save(str(path))
+    return path
 
 
 class NeuralLoaderTests(unittest.TestCase):
@@ -93,16 +100,18 @@ class NeuralLoaderTests(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             predictor.load_dnn_age_predictor(ROOT / "no-such-file.onnx")
 
-    @unittest.skipUnless(
-        AGE_DAT.is_file(), "example/models/*.dat is not available in this checkout"
-    )
     def test_raw_dat_weights_are_refused_with_conversion_guidance(self) -> None:
         """The original dlib .dat weights cannot be loaded directly: there is
-        no runtime path from a proprietary dlib serialization to ONNX.
+        no runtime path from a proprietary dlib serialization to ONNX. The
+        refusal happens before the file is read, so a placeholder stands in
+        for the 10 MiB original.
         """
-        predictor = AgeAndGender()
-        with self.assertRaisesRegex(ValueError, "only .onnx files are accepted") as caught:
-            predictor.load_dnn_age_predictor(AGE_DAT)
+        with tempfile.TemporaryDirectory() as directory:
+            age_dat = Path(directory) / "dnn_age_predictor_v1.dat"
+            age_dat.write_bytes(b"dlib serialized network")
+            predictor = AgeAndGender()
+            with self.assertRaisesRegex(ValueError, "only .onnx files are accepted") as caught:
+                predictor.load_dnn_age_predictor(age_dat)
         self.assertIn("tools/conversion", str(caught.exception))
 
     def test_failed_load_leaves_the_previous_model_usable(self) -> None:
@@ -116,7 +125,6 @@ class NeuralLoaderTests(unittest.TestCase):
             self.assertEqual(predictor.predict(_test_image_array()), EXPECTED_RESULTS)
 
 
-@unittest.skipUnless(SHAPE_DAT.is_file(), "example/models/*.dat is not available in this checkout")
 class ShapePredictorLoaderTests(unittest.TestCase):
     def test_known_file_loads_directly_and_predict_still_matches(self) -> None:
         predictor = AgeAndGender()
@@ -150,16 +158,17 @@ class ShapePredictorLoaderTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 predictor.load_shape_predictor(corrupt)
 
-    def test_neural_dat_is_not_a_shape_predictor(self) -> None:
-        predictor = AgeAndGender()
-        with self.assertRaises(ValueError):
-            predictor.load_shape_predictor(AGE_DAT)
+    def test_other_dlib_model_is_not_a_shape_predictor(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            predictor = AgeAndGender()
+            with self.assertRaises(ValueError):
+                predictor.load_shape_predictor(_other_dlib_model(directory))
 
     def test_failed_load_leaves_the_previous_predictor_usable(self) -> None:
         predictor = AgeAndGender()
         predictor.predict(_test_image_array())  # build the default frontend
-        with self.assertRaises(ValueError):
-            predictor.load_shape_predictor(AGE_DAT)
+        with tempfile.TemporaryDirectory() as directory, self.assertRaises(ValueError):
+            predictor.load_shape_predictor(_other_dlib_model(directory))
         self.assertEqual(predictor.predict(_test_image_array()), EXPECTED_RESULTS)
 
 

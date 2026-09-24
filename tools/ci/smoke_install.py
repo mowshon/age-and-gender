@@ -6,7 +6,8 @@ build``, installed with ``pip install --only-binary=:all:``), not against
 this repository's ``src/`` tree — the point is to prove the installed
 artifact works, with no source checkout on ``sys.path`` ahead of it. This
 repository is only used as a source of known-good fixtures (example images,
-the frozen compatibility corpus, and the original ``.dat`` shape predictor).
+the frozen compatibility corpus, and the ``.dat`` shape predictor, which is
+byte-identical to the original dlib-models download).
 
 Network access is not required; run this under a network namespace or
 firewall to confirm that, per spec/PR-7.md's "Prove compiler-free
@@ -17,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -34,7 +36,7 @@ def check_bundled_prediction(predictor) -> None:
 
 
 def check_shape_predictor_dat_loading(predictor) -> None:
-    dat_path = REPO_ROOT / "example/models/shape_predictor_5_face_landmarks.dat"
+    dat_path = REPO_ROOT / "src/age_and_gender/models/shape_predictor_5_face_landmarks.dat"
     predictor.load_shape_predictor(str(dat_path))
     with Image.open(REPO_ROOT / "example/test-image.jpg") as image:
         results = predictor.predict(image.convert("RGB"))
@@ -53,12 +55,16 @@ def check_explicit_box_prediction(predictor) -> None:
 
 
 def check_neural_dat_rejected(predictor) -> None:
-    dat_path = REPO_ROOT / "example/models/dnn_age_predictor_v1.dat"
-    try:
-        predictor.load_dnn_age_predictor(str(dat_path))
-    except ValueError:
-        print("neural .dat loader correctly rejected the legacy dlib weight file")
-        return
+    # Rejection happens before the file is read, so a placeholder stands in
+    # for the original weights.
+    with tempfile.TemporaryDirectory() as directory:
+        dat_path = Path(directory) / "dnn_age_predictor_v1.dat"
+        dat_path.write_bytes(b"dlib serialized network")
+        try:
+            predictor.load_dnn_age_predictor(str(dat_path))
+        except ValueError:
+            print("neural .dat loader correctly rejected the legacy dlib weight file")
+            return
     raise SystemExit("load_dnn_age_predictor accepted a legacy .dat file; it must not")
 
 

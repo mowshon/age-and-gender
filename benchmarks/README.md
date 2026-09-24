@@ -87,7 +87,7 @@ tooling; see spec/PR-1.md and `tools/legacy/`):
   ./build/legacy-oracle/age_and_gender_legacy_oracle \
     --image build/reference/test-image-v4/input.rgb \
     --width 1100 --height 825 \
-    --models example/models \
+    --models models \
     --output build/reference/test-image-single-face \
     --benchmark-runs 5 \
     --box 266,506,352,419  # legacy top,right,bottom,left order

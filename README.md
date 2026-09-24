@@ -84,8 +84,24 @@ print(results)
 ```
 
 `face` is `[left, top, right, bottom]`, inclusive pixel coordinates. An image
-with no detected faces returns `[]`. Full runnable versions of the examples
-below live in [`example/`](https://github.com/mowshon/age-and-gender/tree/master/example/).
+with no detected faces returns `[]`.
+
+### Runnable example
+
+[`example/example.py`](https://github.com/mowshon/age-and-gender/blob/master/example/example.py)
+prints the results as JSON and saves a copy of the image with each face boxed
+and labelled:
+
+```bash
+python example/example.py                                   # bundled sample photo
+python example/example.py photo.jpg --output annotated.jpg
+python example/example.py photo.jpg --models-dir path/to/bundle > result.json
+```
+
+`--models-dir` loads a model bundle directory (see
+[Bundled and custom models](#bundled-and-custom-models)) instead of the models
+installed with the package. Labels use a system font, falling back to Pillow's
+built-in font.
 
 ### NumPy array input
 
@@ -152,10 +168,17 @@ Its declared `dlib` requirement is satisfied by the official source-only
 `dlib` distribution, not the `dlib-bin` wheels this package uses — installing
 both risks a source build (the compiler requirement this package exists to
 avoid) and a module conflict. If you already depend on `face_recognition` for
-an unrelated reason and want to reuse its detector, see
-[`example/example-with-face-recognition.py`](https://github.com/mowshon/age-and-gender/blob/master/example/example-with-face-recognition.py),
-which documents that trade-off at the top of the file; installing it in a
+an unrelated reason, its boxes pass through unchanged; installing it in a
 separate virtual environment from this package avoids the conflict entirely.
+
+```python
+import face_recognition
+import numpy as np
+
+rgb = image.convert("RGB")
+boxes = face_recognition.face_locations(np.asarray(rgb), model="hog")
+results = predictor.predict(rgb, face_bounding_boxes=boxes)
+```
 
 ## Bundled and custom models
 

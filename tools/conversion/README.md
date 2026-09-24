@@ -11,6 +11,13 @@ builder accepts only the two reviewed layer sequences and known source hashes.
 
 ## Rebuild
 
+The source weights are read from the Git-ignored root `models/` directory.
+Download [`dnn_age_predictor_v1.dat.bz2`](https://github.com/davisking/dlib-models/raw/master/age-predictor/dnn_age_predictor_v1.dat.bz2),
+[`dnn_gender_classifier_v1.dat.bz2`](https://github.com/davisking/dlib-models/raw/master/gender-classifier/dnn_gender_classifier_v1.dat.bz2),
+and [`shape_predictor_5_face_landmarks.dat.bz2`](https://github.com/davisking/dlib-models/raw/master/shape_predictor_5_face_landmarks.dat.bz2)
+from `davisking/dlib-models` and unpack the `.dat` files there. The tools check
+them against their known SHA-256 hashes.
+
 Use the project environment and a CPU-only dlib build:
 
 ```bash
@@ -29,7 +36,7 @@ Run the frozen-fixture, stage, and live synthetic-reference checks:
 venv/bin/python tools/conversion/validate_conversion.py \
   --bundle tools/conversion/artifacts/v1 \
   --probe build/conversion/age_and_gender_probe_dlib \
-  --source-models example/models \
+  --source-models models \
   --work-dir build/conversion/validation \
   --report tools/conversion/artifacts/v1/conversion-report.json
 venv/bin/python -m pytest tests/parity/test_converted_networks.py

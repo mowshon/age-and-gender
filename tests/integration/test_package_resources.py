@@ -312,10 +312,8 @@ class PackagedDistributionTests(unittest.TestCase):
         """Run the public AgeAndGender class, including the explicit loaders.
 
         Copies the image and, as an explicit bundle directory, the package's
-        own installed models (``src/age_and_gender/models/``, not
-        ``example/models/``: the latter's legacy ``.dat`` duplicates are
-        excluded from the sdist, but the former is the package's own data and
-        always ships) out of the checkout, so the child reads nothing from the
+        own installed models (``src/age_and_gender/models/``, which always
+        ships) out of the checkout, so the child reads nothing from the
         source tree except the wheel it has installed.
         """
         sandbox = cls.workspace / "elsewhere-api"
@@ -375,13 +373,6 @@ class PackagedDistributionTests(unittest.TestCase):
         stem = self.sdist.name[: -len(".tar.gz")]
         for name in ("example/test-image.jpg", "example/test-image-2.jpg"):
             self.assertIn(f"{stem}/{name}", self.sdist_names)
-        # example/models/ duplicates the legacy .dat files already bundled as
-        # ONNX/manifest resources; it must not be pulled in just to reach the
-        # two images above.
-        self.assertFalse(
-            [name for name in self.sdist_names if "/example/models/" in name],
-            "the sdist must not ship the legacy .dat duplicates under example/models/",
-        )
 
     def test_source_distribution_resources_match_their_recorded_digests(self) -> None:
         stem = self.sdist.name[: -len(".tar.gz")]
