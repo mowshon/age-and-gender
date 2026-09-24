@@ -41,7 +41,7 @@ python3.10 -m venv /tmp/age-gender-legacy
 /tmp/age-gender-legacy/bin/python tools/legacy/run_reference.py \
   example/test-image.jpg \
   --oracle build/legacy-oracle/age_and_gender_legacy_oracle \
-  --models example/models \
+  --models models \
   --output build/reference/test-image
 ```
 
@@ -131,7 +131,7 @@ cmake -S tools/legacy/original-extension -B /tmp/age-gender-extension \
 cmake --build /tmp/age-gender-extension --parallel 2
 PYTHONPATH=/tmp/age-gender-extension/lib \
   /tmp/age-gender-legacy/bin/python tools/legacy/verify_extension.py \
-  build/reference/test-image/oracle-report.json --models example/models
+  build/reference/test-image/oracle-report.json --models models
 ```
 
 Remove `tools/legacy/original-extension/libs/` afterwards; it is a local,

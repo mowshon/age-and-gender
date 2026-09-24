@@ -11,6 +11,13 @@ builder accepts only the two reviewed layer sequences and known source hashes.
 
 ## Rebuild
 
+The source weights are read from the Git-ignored root `models/` directory.
+Download [`dnn_age_predictor_v1.dat.bz2`](https://github.com/davisking/dlib-models/raw/master/age-predictor/dnn_age_predictor_v1.dat.bz2),
+[`dnn_gender_classifier_v1.dat.bz2`](https://github.com/davisking/dlib-models/raw/master/gender-classifier/dnn_gender_classifier_v1.dat.bz2),
+and [`shape_predictor_5_face_landmarks.dat.bz2`](https://github.com/davisking/dlib-models/raw/master/shape_predictor_5_face_landmarks.dat.bz2)
+from `davisking/dlib-models` and unpack the `.dat` files there. The tools check
+them against their known SHA-256 hashes.
+
 Use the project environment and a CPU-only dlib build:
 
 ```bash
@@ -29,7 +36,7 @@ Run the frozen-fixture, stage, and live synthetic-reference checks:
 venv/bin/python tools/conversion/validate_conversion.py \
   --bundle tools/conversion/artifacts/v1 \
   --probe build/conversion/age_and_gender_probe_dlib \
-  --source-models example/models \
+  --source-models models \
   --work-dir build/conversion/validation \
   --report tools/conversion/artifacts/v1/conversion-report.json
 venv/bin/python -m pytest tests/parity/test_converted_networks.py
@@ -229,3 +236,67 @@ against the live dlib probe, carry the rest of the numerical coverage.
 The conversion evidence is correspondingly narrow on real faces. Widening it is
 PR-4's frontend corpus work; the numbers in the report should be read with that
 in mind.
+
+## PR-8 feasibility prototype: shape predictor and chip extraction in NumPy
+
+This is separate, unrelated tooling that happens to live alongside the ONNX
+conversion pipeline above: a maintainer-only investigation into whether
+dlib's 5-point shape predictor and face-chip extraction can be ported to
+pure Python/NumPy (spec/PR-8.md's "Initial feasibility deliverable"). It is
+not a runtime dependency, not part of the shipped package, and does not
+change anything the ONNX conversion pipeline above produces or validates.
+
+Rebuild the two new C++ tools alongside the existing ones (same CMake
+project):
+
+```bash
+cmake -S tools/conversion -B build/conversion -DCMAKE_BUILD_TYPE=Release
+cmake --build build/conversion --parallel 2 \
+  --target age_and_gender_export_shape_predictor age_and_gender_probe_shape_predictor
+```
+
+Export the bundled shape predictor's trained parameters and package them.
+The builder hashes the source `.dat`, refuses anything but the pinned model,
+and runs the exporter on that same file itself, so the manifest's source
+hash always describes the packaged parameters:
+
+```bash
+venv/bin/python tools/conversion/build_shape_predictor.py \
+  --exporter build/conversion/age_and_gender_export_shape_predictor \
+  --output-dir tools/conversion/artifacts/shape-predictor-v1
+```
+
+Run the full validator. `--probe` is required: the report's top-level
+`passed` is true only if every section ran and passed — frozen-corpus exact
+match, bit-for-bit per-cascade stage agreement with the compiled oracle, the
+retained regression cases (`regression-cases.json`), a reproducible
+live-`dlib-bin` synthetic sweep (boundary and deep-pyramid cases), bit-exact
+`chip_details` geometry, and the zero-angle raw-copy decision.
+`--write-stage-fixture` also refreshes `stage-trace.json`, the oracle trace
+the CI test replays without the probe:
+
+```bash
+venv/bin/python tools/conversion/validate_shape_predictor.py \
+  --probe build/conversion/age_and_gender_probe_shape_predictor \
+  --write-stage-fixture \
+  --report tools/conversion/artifacts/shape-predictor-v1/shape-predictor-report.json
+venv/bin/python -m pytest tests/parity/test_numpy_shape_predictor_feasibility.py
+```
+
+Time the NumPy path against the wheel (spec/PR-6.md protocol by default:
+10 warmups, 100 iterations, five repeats; `--markdown` writes the summary
+table used in the feasibility report):
+
+```bash
+venv/bin/python tools/conversion/benchmark_numpy_frontend.py \
+  --output tools/conversion/artifacts/shape-predictor-v1/numpy-frontend-benchmark.json \
+  --markdown build/conversion/numpy-frontend-benchmark.md
+```
+
+Every checked-in report records the prototype `code_revision`, and the CI
+test fails if any of them is stale relative to the current sources, so rerun
+the validator and benchmark after changing any file listed in
+`shape_predictor_evidence.PROTOTYPE_SOURCES`.
+
+See `shape-predictor-feasibility-report.md` for the results and go/no-go
+discussion.

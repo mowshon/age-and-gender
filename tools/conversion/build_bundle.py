@@ -23,7 +23,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONVERSION_BUNDLE = ROOT / "tools/conversion/artifacts/v1"
-DEFAULT_SHAPE_PREDICTOR = ROOT / "example/models/shape_predictor_5_face_landmarks.dat"
+DEFAULT_SHAPE_PREDICTOR = ROOT / "models/shape_predictor_5_face_landmarks.dat"
 DEFAULT_OUTPUT = ROOT / "src/age_and_gender/models"
 
 # The exact five-point predictor PR-1 froze its landmark fixtures against. A

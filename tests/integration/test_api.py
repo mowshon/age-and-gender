@@ -207,9 +207,7 @@ class WorkingDirectoryIndependenceTests(unittest.TestCase):
             try:
                 os.chdir(os.path.expanduser("~"))
                 predictor = AgeAndGender()
-                predictor.load_shape_predictor(
-                    ROOT / "example/models/shape_predictor_5_face_landmarks.dat"
-                )
+                predictor.load_shape_predictor(bundle_dir / "shape_predictor_5_face_landmarks.dat")
                 predictor.load_dnn_gender_classifier(bundle_dir / "gender-v1.onnx")
                 predictor.load_dnn_age_predictor(bundle_dir / "age-v1.onnx")
                 results = predictor.predict(array)

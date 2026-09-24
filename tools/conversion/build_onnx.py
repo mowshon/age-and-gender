@@ -528,7 +528,7 @@ def make_manifest(output: Path, source_dir: Path) -> dict[str, Any]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--exporter", type=Path, required=True)
-    parser.add_argument("--source-models", type=Path, default=ROOT / "example/models")
+    parser.add_argument("--source-models", type=Path, default=ROOT / "models")
     parser.add_argument("--work-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args()

@@ -69,9 +69,9 @@ only-include = [
     # tests/parity/test_frontend.py decodes these two source images to exercise
     # the real detector/landmark/alignment path; the frozen chip-level parity
     # tests only need the pre-extracted tests/fixtures/legacy/artifacts, which
-    # `tests` above already carries. This does not add `example/models/` (the
-    # legacy .dat duplicates) or `tools/vendor/` (vendored dlib, and the source
-    # of dogs.jpg, whose manifest notes it must not be redistributed separately).
+    # `tests` above already carries. This does not add `tools/vendor/` (vendored
+    # dlib, and the source of dogs.jpg, whose manifest notes it must not be
+    # redistributed separately).
     "example/test-image.jpg",
     "example/test-image-2.jpg",
     "pyproject.toml",
@@ -89,15 +89,12 @@ norecursedirs = ["tools", "build", "venv", "*.egg-info"]
 [tool.ruff]
 line-length = 100
 src = ["src", "tests", "tools"]
-# The 1.x examples are historical source that the API and release work
-# replaces; they are not held to the new project style. tools/vendor/ is
-# upstream dlib/pybind11 source, and tools/legacy/original-extension/ is the
-# frozen 1.x extension recipe (see tools/legacy/README.md) — neither is this
-# project's own code.
+# tools/vendor/ is upstream dlib/pybind11 source, and
+# tools/legacy/original-extension/ is the frozen 1.x extension recipe (see
+# tools/legacy/README.md) — neither is this project's own code.
 extend-exclude = [
     "build",
     "venv",
-    "example",
     "tools/vendor",
     "tools/legacy/original-extension",
 ]
