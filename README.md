@@ -23,7 +23,7 @@ We are grateful to them for making these models freely available.
 pip install age-and-gender
 ```
 
-Requires Python 3.12+. Pretrained models are bundled with the package.
+Requires Python 3.11+. Pretrained models are bundled with the package.
 
 ## Quick start
 
