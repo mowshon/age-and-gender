@@ -1,19 +1,12 @@
 """Estimate age and gender for faces another detector has already cropped.
 
-    python example/face_crops.py
-    python example/face_crops.py crop-1.png crop-2.png
+face-1.png and face-2.png stand in for the crops an external detector
+returns, for example ``frame[top:bottom, left:right]``. This package's own
+detector never runs on them.
 
-Each input image is one face, standing in for the crop an external detector
-(OpenCV, MediaPipe, RetinaFace, ...) returns, for example
-``frame[top:bottom, left:right]``. This package's own detector never runs on
-these crops. JSON goes to stdout; status messages go to stderr.
+    python example/face_crops.py
 """
 
-from __future__ import annotations
-
-import argparse
-import json
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -23,35 +16,16 @@ from age_and_gender import AgeAndGender
 
 HERE = Path(__file__).resolve().parent
 
+predictor = AgeAndGender()
 
-def main() -> None:
-    """Run the example."""
-    parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    parser.add_argument(
-        "faces", nargs="*", type=Path, default=[HERE / "face-1.png", HERE / "face-2.png"]
-    )
-    args = parser.parse_args()
+for name in ("face-1.png", "face-2.png"):
+    # The example crops are RGBA PNGs; the package only accepts RGB.
+    with Image.open(HERE / name) as source:
+        face = np.asarray(source.convert("RGB"))
 
-    predictor = AgeAndGender()
-    results = {}
-    for path in args.faces:
-        # Detectors hand over pixel arrays, so load each crop as one. The
-        # example crops are RGBA PNGs; the package only accepts RGB.
-        with Image.open(path) as source:
-            face = np.asarray(source.convert("RGB"))
-        results[path.name] = {
-            # Both estimates at once.
-            "predict_face": predictor.predict_face(face),
-            # Or just the one you need: each runs only its own model.
-            "gender": predictor.gender(face),
-            "age": predictor.age(face),
-        }
-
-    print(json.dumps(results, indent=2))
-    print(f"{len(results)} face crop(s) processed without face detection", file=sys.stderr)
-
-
-if __name__ == "__main__":
-    main()
+    print(name)
+    # Both estimates at once.
+    print("  predict_face:", predictor.predict_face(face))
+    # Or just the one you need: each runs only its own model.
+    print("  gender:      ", predictor.gender(face))
+    print("  age:         ", predictor.age(face))
