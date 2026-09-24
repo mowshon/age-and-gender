@@ -13,6 +13,7 @@ from typing import Final
 
 import numpy as np
 import onnxruntime as ort
+from numpy.typing import NDArray
 
 from ._models import TASKS, ModelBundle, NeuralModelSpec
 from ._types import Task
@@ -21,32 +22,18 @@ __all__ = ["DEFAULT_MAX_BATCH_SIZE", "InferenceEngine", "NeuralNetwork", "prepar
 
 GRAPH_OPTIMIZATION_LEVELS: Final[dict[str, ort.GraphOptimizationLevel]] = {
     "ORT_DISABLE_ALL": ort.GraphOptimizationLevel.ORT_DISABLE_ALL,
-    "ORT_ENABLE_BASIC": ort.GraphOptimizationLevel.ORT_ENABLE_BASIC,
-    "ORT_ENABLE_EXTENDED": ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED,
-    "ORT_ENABLE_ALL": ort.GraphOptimizationLevel.ORT_ENABLE_ALL,
 }
 _PROBABILITY_SUM_TOLERANCE: Final = 1e-3
 
-# spec/PR-6.md requires bounding memory on high-face-count images rather than
-# handing ONNX Runtime one unbounded batch per call. This bounds the size of
-# each individual prepared tensor and ONNX Runtime call, not the caller's
-# total working set for one image: api.py's predict() still extracts and
-# retains every face's chips up front (chip extraction cannot itself be
-# batched; see _faces.py's module docstring), so total memory still scales
-# with face count regardless of this bound, just without ever building one
-# oversized tensor/call. 32 is not an arbitrary round number: it is the
-# largest batch size the conversion tooling and
-# tests/parity/test_converted_networks.py already validate numerically
-# (batch sizes 1, 2, 7, 32 in tools/conversion/validate_conversion.py), so
-# chunking at this boundary carries existing parity evidence rather than
-# introducing an unvalidated one. Chunking is otherwise invisible: each row's
-# probabilities are independent of its batch (see
-# test_heterogeneous_batch_matches_individual_inference), so splitting one
-# call into several never changes a result, only peak memory and call count.
+# Bounds each prepared tensor and ONNX Runtime call. Chunking preserves results
+# because rows are independent; tests/parity/test_batching.py checks that
+# splitting calls does not change probabilities, ordering, or public results.
 DEFAULT_MAX_BATCH_SIZE: Final = 32
 
 
-def prepare_batch(chips: np.ndarray | Sequence[np.ndarray], spec: NeuralModelSpec) -> np.ndarray:
+def prepare_batch(
+    chips: NDArray[np.uint8] | Sequence[NDArray[np.uint8]], spec: NeuralModelSpec
+) -> NDArray[np.float32]:
     """Turn aligned uint8 RGB chips into the network's float32 NCHW input.
 
     Args:
@@ -70,7 +57,9 @@ def prepare_batch(chips: np.ndarray | Sequence[np.ndarray], spec: NeuralModelSpe
     return np.ascontiguousarray(values.transpose(0, 3, 1, 2))
 
 
-def _stack_chips(chips: np.ndarray | Sequence[np.ndarray], spec: NeuralModelSpec) -> np.ndarray:
+def _stack_chips(
+    chips: NDArray[np.uint8] | Sequence[NDArray[np.uint8]], spec: NeuralModelSpec
+) -> NDArray[np.uint8]:
     size = spec.chip_size
     if isinstance(chips, np.ndarray):
         batch = chips
@@ -88,7 +77,7 @@ def _stack_chips(chips: np.ndarray | Sequence[np.ndarray], spec: NeuralModelSpec
 
 
 class NeuralNetwork:
-    """One converted network and the session that runs it.
+    """One neural network and the session that runs it.
 
     The specification and session options are fixed when the object is created.
     The session itself is built on first use and then reused, so weights are
@@ -153,20 +142,13 @@ class NeuralNetwork:
         if self._session is None:
             self._session = self._create_session()
 
-    def probabilities(self, chips: np.ndarray | Sequence[np.ndarray]) -> np.ndarray:
+    def probabilities(
+        self, chips: NDArray[np.uint8] | Sequence[NDArray[np.uint8]]
+    ) -> NDArray[np.float32]:
         """Run the network over aligned uint8 chips.
 
-        A call with more than :attr:`max_batch_size` chips is split into
-        several ordered chunks, each prepared and run separately and their
-        results concatenated back together; this bounds the peak size of any
-        one ONNX Runtime call on a high-face-count image instead of preparing
-        and running one unbounded batch. Chunking does not change a result:
-        each row's probabilities depend only on its own chip, never on what
-        else shares its batch (validated by
-        tests/parity/test_converted_networks.py's batch-size sweep and
-        tests/parity/test_batching.py). A call at or under the limit takes the
-        same single-batch path as before; splitting only ever adds a Python
-        loop, never a "batch setup" cost, to the common one-face case.
+        Inputs larger than :attr:`max_batch_size` are split into ordered
+        chunks and concatenated without changing face order.
 
         Args:
             chips: Chips in face order, as accepted by :func:`prepare_batch`.
@@ -186,7 +168,7 @@ class NeuralNetwork:
         ]
         return np.concatenate(chunks, axis=0)
 
-    def run(self, inputs: np.ndarray) -> np.ndarray:
+    def run(self, inputs: NDArray[np.float32]) -> NDArray[np.float32]:
         """Run the network over a prepared input tensor.
 
         Args:
@@ -205,21 +187,19 @@ class NeuralNetwork:
             return np.zeros((0, self._spec.classes), dtype=np.float32)
         self.ensure_loaded()
         assert self._session is not None  # narrowed by ensure_loaded
-        outputs = self._session.run([self._spec.output_name], {self._spec.input_name: inputs})[0]
+        outputs: NDArray[np.float32] = self._session.run(
+            [self._spec.output_name], {self._spec.input_name: inputs}
+        )[0]
         self._check_probabilities(outputs, inputs.shape[0])
         return outputs
 
     def _create_session(self) -> ort.InferenceSession:
         spec = self._spec
         runtime = self._runtime
-        level = GRAPH_OPTIMIZATION_LEVELS.get(runtime.graph_optimization_level)
-        if level is None:
-            raise ValueError(
-                f"{self._bundle.origin}: unknown graph optimization level "
-                f"{runtime.graph_optimization_level!r}"
-            )
         options = ort.SessionOptions()
-        options.graph_optimization_level = level
+        options.graph_optimization_level = GRAPH_OPTIMIZATION_LEVELS[
+            runtime.graph_optimization_level
+        ]
         options.intra_op_num_threads = runtime.intra_op_num_threads
         options.inter_op_num_threads = runtime.inter_op_num_threads
         payload = self._bundle.model_bytes(spec.task)

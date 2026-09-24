@@ -1,4 +1,4 @@
-"""Loaders for the PR-1 frozen oracle fixtures, without conversion tooling."""
+"""Loaders for the frozen compatibility fixtures."""
 
 from __future__ import annotations
 

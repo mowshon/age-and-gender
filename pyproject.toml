@@ -26,11 +26,10 @@ classifiers = [
     "Typing :: Typed",
 ]
 
-# Resolved and parity-checked on CPython 3.13.15; see spec/PR-3.md and
-# spec/PR-4.md. dlib-bin is pinned exactly because frontend parity (detector
-# boxes, landmarks, and both chip sizes) was validated against this one wheel;
-# see tools/legacy/frontend-comparison.md before widening it. onnx, Torch,
-# Caffe and face_recognition stay out of the runtime entirely.
+# dlib-bin is pinned exactly because detector boxes, landmarks, and both chip
+# sizes are bit-exact with this wheel in tests/parity/test_frontend.py. Re-run
+# parity before widening it. onnx, Torch, Caffe and face_recognition stay out
+# of the runtime entirely.
 dependencies = [
     "numpy>=2.3.3,<3",
     "onnxruntime>=1.23.0,<1.31",
@@ -57,21 +56,14 @@ dev = [
 path = "src/age_and_gender/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-# Only the Python package is selected. The 1.x setup.py and CMake sources stay
-# in the tree as historical source but take no part in this build, and must not
-# install an extension module beside the package.
 packages = ["src/age_and_gender"]
 
 [tool.hatch.build.targets.sdist]
 only-include = [
     "src/age_and_gender",
     "tests",
-    # tests/parity/test_frontend.py decodes these two source images to exercise
-    # the real detector/landmark/alignment path; the frozen chip-level parity
-    # tests only need the pre-extracted tests/fixtures/legacy/artifacts, which
-    # `tests` above already carries. This does not add `tools/vendor/` (vendored
-    # dlib, and the source of dogs.jpg, whose manifest notes it must not be
-    # redistributed separately).
+    # Frontend parity tests decode these images to exercise the real detector,
+    # landmark, and alignment path.
     "example/test-image.jpg",
     "example/test-image-2.jpg",
     "pyproject.toml",
@@ -80,23 +72,16 @@ only-include = [
 ]
 
 [tool.pytest.ini_options]
-# Vendored upstream sources under tools/vendor/ carry their own test suites;
-# testpaths keeps collection inside this project's tests.
 testpaths = ["tests"]
 pythonpath = [".", "src"]
-norecursedirs = ["tools", "build", "venv", "*.egg-info"]
+norecursedirs = ["build", "venv", "*.egg-info"]
 
 [tool.ruff]
 line-length = 100
-src = ["src", "tests", "tools"]
-# tools/vendor/ is upstream dlib/pybind11 source, and
-# tools/legacy/original-extension/ is the frozen 1.x extension recipe (see
-# tools/legacy/README.md) — neither is this project's own code.
+src = ["src", "tests"]
 extend-exclude = [
     "build",
     "venv",
-    "tools/vendor",
-    "tools/legacy/original-extension",
 ]
 
 [tool.ruff.lint]
@@ -113,8 +98,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Docstring rules are a public-surface requirement, not a test-suite one.
 "tests/**" = ["D"]
-"tools/**" = ["D"]
-"benchmarks/**" = ["D"]
+".github/scripts/**" = ["D"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

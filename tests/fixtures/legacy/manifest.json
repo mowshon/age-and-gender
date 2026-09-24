@@ -1,7 +1,6 @@
 {
   "schema_version": 1,
-  "status": "pr2-conversion-gate",
-  "stability_report": "tests/fixtures/legacy/stability-linux-x86_64.json",
+  "status": "frozen",
   "compatibility_thresholds": {
     "detector_landmarks_chips_normalized_input": "exact",
     "logits": {"atol": 1e-5, "rtol": 1e-4},
@@ -77,18 +76,6 @@
       ],
       "source": "original repository example",
       "redistribution": "covered by repository license"
-    },
-    {
-      "path": "tools/vendor/dlib/examples/faces/dogs.jpg",
-      "source_sha256": "66e22f8c3bd3b8f876ad9158caaa064992d2b56a5681d9c6efa163a59db7ed03",
-      "decoded_rgb_sha256": "594e39d3ecee106f1fce1e21d307e81e6f609ba1e5e3f5b25d81d7559734e246",
-      "width": 900,
-      "height": 916,
-      "expected_faces": 0,
-      "golden": "tests/fixtures/legacy/dogs.golden.json",
-      "expected": [],
-      "source": "vendored dlib face-detector example",
-      "redistribution": "vendored test asset; photographic rights not established; do not redistribute separately"
     }
   ],
   "explicit_box_cases": [
@@ -126,8 +113,8 @@
     "explicit_boxes": "implemented by repeatable --box arguments",
     "reversed_and_duplicate_boxes": "covered by reversed-order-duplicate-and-out-of-frame",
     "empty_box_list": "same path as omitted boxes; covered by executable contract tests",
-    "no_face": "covered by tools/vendor/dlib/examples/faces/dogs.jpg",
+    "no_face": "synthetic uniform images in the tests",
     "in_and_out_of_frame": "covered by reversed-order-duplicate-and-out-of-frame",
-    "representative_30_image_100_face_corpus": "deferred to release hardening; not required for the PR-2 conversion gate"
+    "representative_30_image_100_face_corpus": "not collected"
   }
 }

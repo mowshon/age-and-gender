@@ -1,9 +1,7 @@
 {
   "bundle_id": "age-and-gender-v1",
   "bundle_kind": "package",
-  "converter_revision": "9b41a9b5b61641fa9788e47be2722419043a449557314603f4ac1789e7af614a",
   "dlib": {
-    "source": "tools/vendor/dlib",
     "version": "19.20.0"
   },
   "graph_policy": {

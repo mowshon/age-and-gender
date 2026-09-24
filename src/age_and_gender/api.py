@@ -1,33 +1,14 @@
 """The public ``AgeAndGender`` class.
 
-Ties the frontend (``_faces.py``, ``_images.py``), the ONNX runtime
-(``_inference.py``), and the legacy-exact postprocessing (``_postprocess.py``)
-together behind the original 1.x calling convention: the same class name, a
-zero-argument constructor, the same three loader method names, the same
-``predict()`` keyword and box order, and the same result dictionaries.
+The class ties image and face handling, ONNX inference, and compatible
+postprocessing together behind the original calling convention. The default
+constructor uses the models bundled with the package, while
+``from_model_dir()`` accepts an explicit bundle.
 
-Two things are new. First, ``AgeAndGender()`` needs no downloaded models: it
-resolves the models bundled with this package. Second, ``from_model_dir()``
-accepts an explicit bundle directory for callers who trained or converted
-their own weights.
-
-**Compatibility boundary.** The two neural loaders,
-``load_dnn_age_predictor``/``load_dnn_gender_classifier``, accept an ``.onnx``
-file with a sibling ``manifest.json`` naming it for that task (the layout
-``tools/conversion/build_bundle.py`` produces, or one written by hand — see
-``tools/conversion/README.md``). The manifest declares the structural facts an
-ONNX graph cannot state about itself — task, tensor shape/dtype, and the
-normalization the network expects — and that declaration is what is checked;
-loading does not require the file's bytes to match any specific known hash, so
-a caller can point this at whatever model they trust, from wherever they got
-it. The original dlib-serialized ``dnn_age_predictor_v1.dat``/
-``dnn_gender_classifier_v1.dat`` files are not accepted directly: they are a
-proprietary dlib format only the maintainer's offline C++ tooling can read, so
-there is no way to load an arbitrary one of those at runtime. Convert them
-once with ``tools/conversion`` and load the resulting ``.onnx`` file instead.
-The five-point landmark model is the exception: dlib deserializes it natively,
-so ``load_shape_predictor`` loads any compatible ``.dat`` file directly, with
-no manifest or conversion step.
+Neural model loaders accept an ``.onnx`` graph with a sibling
+``manifest.json`` naming it for the requested task. Neural dlib ``.dat`` files
+are not supported. The landmark loader accepts a compatible dlib ``.dat``
+file directly.
 """
 
 from __future__ import annotations
@@ -36,7 +17,7 @@ import os
 import threading
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 import numpy as np
 from PIL import Image
@@ -87,7 +68,7 @@ class AgeAndGender:
         self._init_from_bundle(bundled_models())
 
     @classmethod
-    def from_model_dir(cls, directory: str | os.PathLike[str]) -> AgeAndGender:
+    def from_model_dir(cls, directory: str | os.PathLike[str]) -> Self:
         """Build a predictor from an explicit model bundle directory.
 
         Unlike the zero-configuration constructor, this loads and structurally
@@ -162,14 +143,12 @@ class AgeAndGender:
         Args:
             dnn_age_predictor_path: Path to an ``.onnx`` file with a sibling
                 ``manifest.json`` naming it as the age model. The original
-                dlib ``dnn_age_predictor_v1.dat`` is not accepted here; see
-                the module docstring for why and how to convert it.
+                dlib ``dnn_age_predictor_v1.dat`` is not accepted.
 
         Raises:
             FileNotFoundError: The path does not exist.
             ValueError: The path is not an ``.onnx`` file, or its sibling
-                manifest does not identify it as the age model; see the
-                module docstring for the compatibility boundary.
+                manifest does not identify it as the age model.
         """
         self._load_neural(dnn_age_predictor_path, "age")
 
@@ -181,8 +160,7 @@ class AgeAndGender:
         Args:
             dnn_gender_classifier_path: Path to an ``.onnx`` file with a
                 sibling ``manifest.json`` naming it as the gender model. The
-                original dlib ``dnn_gender_classifier_v1.dat`` is not accepted
-                here; see the module docstring for why and how to convert it.
+                original dlib ``dnn_gender_classifier_v1.dat`` is not accepted.
 
         Raises:
             FileNotFoundError: The path does not exist.
@@ -197,10 +175,9 @@ class AgeAndGender:
             raise FileNotFoundError(f"no {task} model at {file_path}")
         if file_path.suffix.lower() != _ONNX_SUFFIX:
             raise ValueError(
-                f"{file_path}: only .onnx files are accepted here; the original "
-                "dlib .dat weights cannot be loaded directly. Convert them first "
-                "with tools/conversion (see tools/conversion/README.md) and pass "
-                "the resulting .onnx file, alongside its manifest.json"
+                f"{file_path}: only .onnx files are accepted; the original dlib "
+                ".dat weights cannot be loaded. Pass an .onnx model whose sibling "
+                "manifest.json names it for this task."
             )
         bundle = _explicit_onnx_bundle(file_path, task)
         with self._lock:

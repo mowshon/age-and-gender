@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import numpy as np
+from numpy.typing import NDArray
 
 from ._types import AgePrediction, FacePrediction, GenderPrediction, Rectangle
 
@@ -26,7 +27,7 @@ __all__ = [
 
 def age_expectations(
     probabilities: np.ndarray, weights: Sequence[float] | np.ndarray
-) -> np.ndarray:
+) -> NDArray[np.float32]:
     """Return the float32 expected age of each row.
 
     Args:
@@ -44,7 +45,7 @@ def age_expectations(
     # The accumulator stays float32 and each class is added in class order, as
     # the C++ loop does. A dot product over the class axis is mathematically the
     # same sum but is free to reassociate it, which is not bit-compatible.
-    estimate = np.multiply(class_weights[0], values[:, 0], dtype=np.float32)
+    estimate: NDArray[np.float32] = np.multiply(class_weights[0], values[:, 0], dtype=np.float32)
     for index in range(1, class_weights.shape[0]):
         estimate += np.multiply(class_weights[index], values[:, index], dtype=np.float32)
     return estimate
@@ -183,7 +184,7 @@ def _rectangle(rectangle: Sequence[int]) -> Rectangle:
     return [int(value) for value in rectangle]
 
 
-def _as_probabilities(probabilities: np.ndarray, classes: int, task: str) -> np.ndarray:
+def _as_probabilities(probabilities: np.ndarray, classes: int, task: str) -> NDArray[np.float32]:
     values = np.asarray(probabilities, dtype=np.float32)
     if values.ndim != 2 or values.shape[1] != classes:
         raise ValueError(f"{task} probabilities must have shape [N, {classes}], got {values.shape}")

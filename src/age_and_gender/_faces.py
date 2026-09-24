@@ -5,12 +5,9 @@ This module is the only place that imports :mod:`dlib` (installed as the
 ``dlib.rectangle`` or ``dlib.full_object_detection``: they pass and receive
 plain ``[left, top, right, bottom]`` rectangles and uint8 chip arrays.
 
-Both chips for a face are extracted independently, one
-:func:`dlib.extract_image_chip` call each, from the original image. dlib's
-batched ``get_face_chips`` shares a crop/pyramid across the whole batch and is
-*not* pixel-equivalent to individual extraction; see spec/PR-4.md's "known
-batching trap" for a measured counterexample on this repository's own example
-image. Do not introduce it as a "safe" optimization here.
+Both chips for a face are extracted independently from the original image.
+Dlib's batched ``get_face_chips`` is not pixel-equivalent; the counterexample
+is guarded by ``tests/parity/test_frontend.py::BatchingTrapRegressionTests``.
 """
 
 from __future__ import annotations
@@ -23,6 +20,7 @@ from typing import Final
 
 import dlib
 import numpy as np
+from numpy.typing import NDArray
 
 from ._models import ModelBundle
 from ._types import Rectangle
@@ -58,8 +56,8 @@ class FaceExtraction:
 
     rectangle: Rectangle
     landmarks: list[list[int]]
-    gender_chip: np.ndarray
-    age_chip: np.ndarray
+    gender_chip: NDArray[np.uint8]
+    age_chip: NDArray[np.uint8]
 
 
 class FaceFrontend:
@@ -115,7 +113,7 @@ class FaceFrontend:
         """
         self._predictor = predictor
 
-    def detect(self, image: np.ndarray) -> list[Rectangle]:
+    def detect(self, image: NDArray[np.uint8]) -> list[Rectangle]:
         """Detect faces with zero upsampling, in the detector's own order.
 
         Args:
@@ -130,7 +128,7 @@ class FaceFrontend:
         return [_rectangle_of(detection) for detection in detections]
 
     def extract(
-        self, image: np.ndarray, boxes: Sequence[Rectangle] | None = None
+        self, image: NDArray[np.uint8], boxes: Sequence[Rectangle] | None = None
     ) -> list[FaceExtraction]:
         """Resolve faces, then extract both chips for each one.
 
@@ -170,7 +168,7 @@ class FaceFrontend:
         return extractions
 
     def _resolve(
-        self, image: np.ndarray, boxes: Sequence[Rectangle] | None
+        self, image: NDArray[np.uint8], boxes: Sequence[Rectangle] | None
     ) -> list[tuple[Rectangle, dlib.rectangle]]:
         if not boxes:
             detections = self._detector(image, _DETECTOR_UPSAMPLE_NUM_TIMES)
@@ -188,7 +186,9 @@ class FaceFrontend:
             resolved.append(([left, top, right, bottom], detection))
         return resolved
 
-    def _chip(self, image: np.ndarray, shape: dlib.full_object_detection, size: int) -> np.ndarray:
+    def _chip(
+        self, image: NDArray[np.uint8], shape: dlib.full_object_detection, size: int
+    ) -> NDArray[np.uint8]:
         details = dlib.get_face_chip_details(shape, size, CHIP_PADDING)
         chip = dlib.extract_image_chip(image, details)
         return np.ascontiguousarray(chip)
@@ -203,7 +203,7 @@ def _landmarks_of(shape: dlib.full_object_detection) -> list[list[int]]:
 
 
 def _probe_parts(predictor: dlib.shape_predictor) -> int:
-    return predictor(_PROBE_IMAGE, _PROBE_RECTANGLE).num_parts
+    return int(predictor(_PROBE_IMAGE, _PROBE_RECTANGLE).num_parts)
 
 
 def _load_predictor(bundle: ModelBundle) -> dlib.shape_predictor:

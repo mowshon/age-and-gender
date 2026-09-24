@@ -1,25 +1,13 @@
-"""Bundled model resources and manifest validation.
+"""Model bundle resources and manifest validation.
 
-A *bundle* is a directory holding ``manifest.json``, the two converted ONNX
-networks, and the five-point landmark model. The package installs one such
-bundle; :func:`load_bundle` accepts any directory with a manifest in the same
-schema, whether produced by the maintainer conversion tooling or hand-authored
-for a custom model.
+A bundle contains ``manifest.json``, two ONNX networks, and a five-point
+landmark model. The package installs one bundle, and :func:`load_bundle`
+accepts compatible directories supplied by callers.
 
-Nothing here is executed at import time: resolving the installed bundle reads
-the manifest, and model bytes are read the first time a network is actually
-loaded.
-
-Validation here is structural, not cryptographic: the manifest must describe a
-compatible task, tensor shape/dtype, normalization contract, and labels, and
-:mod:`age_and_gender._inference` separately checks the loaded ONNX graph's own
-declared signature against that same manifest. There is no SHA-256/byte-size
-check of artifact contents against the manifest — a bundle only has to be
-structurally compatible, not byte-identical to some known-good copy, so a
-caller can point this at their own model files without regenerating a
-hash-locked manifest for them. A manifest may still record a ``source`` block
-naming what a model was converted from, purely as an informational note; it is
-never required and never used to gate loading.
+Validation is structural rather than hash-based: the manifest and loaded
+models must agree on tasks, tensor signatures, normalization, labels, and
+runtime settings. Recorded hashes and source metadata are informational.
+Model bytes are loaded lazily and reused by their runtime sessions.
 """
 
 from __future__ import annotations
@@ -63,10 +51,9 @@ CLASS_COUNTS: Final[Mapping[Task, int]] = {"age": 81, "gender": 2}
 GENDER_LABELS: Final = ("female", "male")
 NORMALIZATION_SCALE: Final = 1.0 / 256.0
 
-# Parity was established with exactly these session options and does not hold at
-# the other graph optimization levels; see tools/conversion/README.md for the
-# measured comparison. A bundle that names different options was validated
-# against a different contract, so it is rejected instead of silently run.
+# Parity was established with graph optimization disabled. Sessions remain
+# single-threaded because additional intra-op threads reduced throughput when
+# several package instances ran concurrently.
 SUPPORTED_RUNTIME: Final[Mapping[str, Any]] = {
     "provider": "CPUExecutionProvider",
     "graph_optimization_level": "ORT_DISABLE_ALL",
@@ -77,7 +64,7 @@ SUPPORTED_RUNTIME: Final[Mapping[str, Any]] = {
 
 @dataclass(frozen=True, slots=True)
 class Normalization:
-    """Input normalization contract recorded by the converter."""
+    """Input normalization contract recorded by the manifest."""
 
     means: tuple[float, float, float]
     scale: float
@@ -85,13 +72,7 @@ class Normalization:
 
 @dataclass(frozen=True, slots=True)
 class NeuralModelSpec:
-    """Validated description of one converted network inside a bundle.
-
-    ``sha256``/``size_bytes`` and ``source_filename``/``source_sha256`` are
-    informational only, carried over from the manifest when present (the
-    package's own shipped manifest records them for provenance); none of them
-    are checked against the artifact's actual bytes at load time.
-    """
+    """Validated description of one neural network inside a bundle."""
 
     task: Task
     filename: str
@@ -140,17 +121,7 @@ class RuntimeSpec:
 
 
 class ModelBundle:
-    """A structurally validated set of model resources resolved from one location.
-
-    The manifest is parsed and structurally checked when the bundle is
-    created: task, tensor shape/dtype, normalization, and labels. Artifact
-    bytes are read fresh from disk whenever they are handed out, never cached
-    or retained afterwards, but not hash-verified against the manifest — a
-    bundle only has to be structurally compatible, checked by the ONNX Runtime
-    session or dlib predictor that actually loads it. Reads happen when a
-    model is loaded, never per prediction, so a live session never reopens its
-    weights.
-    """
+    """A validated set of model resources resolved from one location."""
 
     def __init__(self, root: Traversable, manifest: Mapping[str, Any], origin: str) -> None:
         self._root = root
@@ -168,7 +139,7 @@ class ModelBundle:
 
     @property
     def bundle_id(self) -> str:
-        """Identifier the converter stamped into the manifest."""
+        """Identifier declared by the manifest."""
         return self._bundle_id
 
     @property
@@ -212,11 +183,8 @@ class ModelBundle:
     def model_bytes(self, task: Task) -> bytes:
         """Read the serialized ONNX graph for ``task``.
 
-        Bytes are read fresh from the bundle every time a model is loaded,
-        never cached, so a file that changed on disk is always picked up.
-        Structural compatibility is checked separately, by the ONNX Runtime
-        session this payload builds (see ``_inference.py``'s signature check)
-        — there is no hash comparison here.
+        Bytes are read fresh each time a model is loaded so on-disk changes
+        are visible to a newly created session.
 
         Args:
             task: ``"age"`` or ``"gender"``.
@@ -236,10 +204,7 @@ class ModelBundle:
 
         dlib deserializes from a path rather than from bytes, so the resource is
         materialized for the duration of the context. The path is only valid
-        inside the ``with`` block: an installed package may have to extract it
-        from a zip import, and the extracted copy is removed on exit.
-        Structural compatibility (producing five landmark parts) is checked
-        separately, by ``_faces.py`` when it actually loads the predictor.
+        inside the ``with`` block.
 
         Raises:
             FileNotFoundError: The artifact is missing from the bundle.
@@ -318,8 +283,8 @@ def _check_bundle_identity(manifest: Mapping[str, Any], origin: str) -> None:
     kind = manifest.get("bundle_kind")
     if kind != SUPPORTED_BUNDLE_KIND:
         raise ValueError(
-            f"{origin}: manifest bundle_kind {kind!r} is not a package bundle; "
-            "build one with tools/conversion/build_bundle.py"
+            f"{origin}: manifest bundle_kind {kind!r} is not supported; "
+            f"expected {SUPPORTED_BUNDLE_KIND!r}"
         )
     if not isinstance(manifest.get("bundle_id"), str) or not manifest["bundle_id"]:
         raise ValueError(f"{origin}: manifest is missing a bundle_id")
@@ -360,14 +325,7 @@ def _section(manifest: Mapping[str, Any], origin: str, *path: str) -> Mapping[st
 def _artifact(
     section: Mapping[str, Any], origin: str, label: str
 ) -> tuple[str, str | None, int | None]:
-    """Parse an artifact's filename, and its sha256/bytes if present.
-
-    ``filename`` is the only field this release actually uses to locate and
-    load a model; ``sha256``/``bytes`` are carried through as informational
-    metadata when a manifest happens to record them (the shipped manifest
-    does, for provenance), but are optional and never checked against the
-    artifact's actual bytes.
-    """
+    """Parse an artifact filename and optional informational metadata."""
     filename = section.get("filename")
     if not isinstance(filename, str) or not filename:
         raise ValueError(f"{origin}: manifest {label}.filename is missing or malformed")
@@ -382,16 +340,7 @@ def _artifact(
 
 
 def _check_flat_filename(filename: str, origin: str, label: str) -> None:
-    """Reject anything that could resolve outside the bundle directory.
-
-    Every artifact this manifest format names lives directly under the bundle
-    root (the shipped manifest and build_bundle.py both only ever write flat
-    names). `_resource()` joins this filename onto the bundle root without
-    further checks, so an absolute path or a `..` component here would let a
-    corrupt or malicious manifest read a file the caller never intended to
-    expose, breaking `from_model_dir()`'s "backed entirely by this directory"
-    contract.
-    """
+    """Reject names that could resolve outside the bundle directory."""
     if not filename or filename in {".", ".."} or "/" in filename or "\\" in filename:
         raise ValueError(
             f"{origin}: manifest {label}.filename {filename!r} is not a plain filename"
@@ -399,15 +348,7 @@ def _check_flat_filename(filename: str, origin: str, label: str) -> None:
 
 
 def _check_contained(resource: Path, root: Traversable, origin: str, name: str) -> None:
-    """Reject a resource that resolves outside the bundle root.
-
-    `_check_flat_filename()` only rejects traversal spelled out in the
-    manifest's `filename` string; a flat, innocent-looking name can still be a
-    symlink on disk that points elsewhere. A directory-backed bundle root is a
-    real `Path`, so its resolved target can be checked directly; this is a
-    no-op for the installed package's own (non-symlinked) resources and for
-    any other `Traversable` implementation that isn't filesystem-backed.
-    """
+    """Reject filesystem resources whose symlink target escapes the bundle."""
     try:
         resolved = resource.resolve(strict=True)
     except OSError:
@@ -442,6 +383,8 @@ def _parse_neural_model(manifest: Mapping[str, Any], task: Task, origin: str) ->
         _section(manifest, origin, "models", task, "artifact"), origin, f"models.{task}.artifact"
     )
     source = _optional_section(manifest, "models", task, "source")
+    source_filename: str | None
+    source_sha256: str | None
     if source is not None:
         source_filename, source_sha256, _ = _artifact(source, origin, f"models.{task}.source")
     else:
@@ -500,14 +443,7 @@ def _check_graph_signature(manifest: Mapping[str, Any], task: Task, origin: str)
 
 
 def _as_list_or_none(value: Any) -> list[Any] | None:
-    """Return `value` if it is already a list, `[]` for a missing/null field.
-
-    Anything else (a bare number, bool, string, or object) is not a shape or
-    label list under any manifest this format allows, so it is reported by
-    the caller's own mismatch message instead of being coerced through
-    `list()`, which raises a bare `TypeError` on a non-iterable value such as
-    an int or `null`.
-    """
+    """Normalize a missing list while leaving malformed values detectable."""
     if value is None:
         return []
     return value if isinstance(value, list) else None
@@ -607,6 +543,8 @@ def _parse_shape_predictor(manifest: Mapping[str, Any], origin: str) -> ShapePre
         "shape_predictor.artifact",
     )
     source = _optional_section(manifest, "shape_predictor", "source")
+    source_filename: str | None
+    source_sha256: str | None
     if source is not None:
         source_filename, source_sha256, _ = _artifact(source, origin, "shape_predictor.source")
     else:

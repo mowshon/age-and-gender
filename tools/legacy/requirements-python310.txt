@@ -1,4 +1,0 @@
-# Historical extension/reference lane only. Do not install dlib or dlib-bin here.
-numpy==2.2.6
-Pillow==12.3.0
-setuptools==65.5.0

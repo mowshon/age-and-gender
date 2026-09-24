@@ -53,6 +53,7 @@ also exclude NumPy and ONNX Runtime and is outside the recommended architecture.
 - [PR-6 — Optimize measured bottlenecks without changing results](PR-6.md)
 - [PR-7 — Validate installation, remove native build infrastructure, release](PR-7.md)
 - [PR-8 — Conditional dlib-free runtime investigation and implementation gates](PR-8.md)
+- [PR-9 — Cleanup: remove legacy tooling and internal-plan references](PR-9.md)
 
 ## Project development environment
 

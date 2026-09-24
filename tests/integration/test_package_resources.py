@@ -117,8 +117,8 @@ print(json.dumps({
 """
 
 
-# Exercises the public AgeAndGender class exactly as spec/PR-5.md's target
-# surface shows it: zero-configuration construction, the three loader methods
+# Exercises the public AgeAndGender class: zero-configuration construction,
+# the three loader methods
 # (the two neural ones against an explicit .onnx bundle, since the original
 # .dat weights are not loadable directly), and both predict() call styles.
 # CHILD_PROGRAM and FRONTEND_CHILD_PROGRAM above only reach the internal
@@ -156,8 +156,8 @@ print(json.dumps({
 """
 
 
-# spec/PR-7.md: "Model loading must not write into site-packages." Zero
-# configuration, one prediction, nothing else: any write attempt into the
+# Model loading must not write into site-packages. Zero-configuration, one
+# prediction, nothing else: any write attempt into the
 # read-only package directory this program is run against would surface as an
 # OSError/PermissionError here rather than as a passing, silently-ignored call.
 READ_ONLY_CHILD_PROGRAM = """
@@ -361,14 +361,14 @@ class PackagedDistributionTests(unittest.TestCase):
             self.assertIn(f"{stem}/src/age_and_gender/{name}", self.sdist_names)
         self.assertIn(f"{stem}/pyproject.toml", self.sdist_names)
         self.assertFalse(
-            [name for name in self.sdist_names if "/libs/" in name or name.endswith("setup.py")],
-            "the sdist must not ship the historical native build",
+            [name for name in self.sdist_names if name.endswith("setup.py")],
+            "the sdist must not ship an undeclared build script",
         )
 
     def test_source_distribution_carries_what_test_frontend_needs(self) -> None:
-        """tests/parity/test_frontend.py decodes these images to exercise the
-        real detector/landmark path; a sdist without them can't run the tests
-        it ships (github.com/mowshon/age-and-gender parity gap, fixed here).
+        """Ensure the sdist carries images needed by frontend parity tests.
+
+        The tests decode these images to exercise the detector and landmarks.
         """
         stem = self.sdist.name[: -len(".tar.gz")]
         for name in ("example/test-image.jpg", "example/test-image-2.jpg"):
@@ -458,14 +458,14 @@ class PackagedDistributionTests(unittest.TestCase):
         self.assertNotIn(str(ROOT), self.output["cwd"])
 
     def test_no_checkout_source_is_on_the_installed_runtime_path(self) -> None:
-        """Neither the package sources, tools/, nor the CMake build tree is reachable.
+        """Ensure checkout source and build directories are not reachable.
 
         The project environment's site-packages is under the checkout and is
         deliberately allowed: it is how this test supplies NumPy and ONNX
         Runtime without an index.
         """
         dependencies = str(Path(sysconfig.get_paths()["purelib"]).resolve())
-        forbidden = [str(ROOT), *(str(ROOT / name) for name in ("src", "tools", "build"))]
+        forbidden = [str(ROOT), *(str(ROOT / name) for name in ("src", "build"))]
         for entry in self.output["sys_path"]:
             resolved = str(Path(entry).resolve())
             if resolved == dependencies or resolved.startswith(f"{dependencies}{os.sep}"):
@@ -493,10 +493,7 @@ class PackagedDistributionTests(unittest.TestCase):
         self.assertEqual(self.frontend_output["results"], expected)
 
     def test_public_api_reproduces_the_frozen_results_from_the_installed_wheel(self) -> None:
-        """spec/PR-5.md's "built-wheel integration using real models" check:
-        the public AgeAndGender class, not the internal modules, driven end to
-        end from a binary-only install.
-        """
+        """Run the public class end to end from a binary-only install."""
         expected = [face.result for face in golden_images()["test-image.golden.json"]]
         self.assertEqual(self.api_output["zero_config_results"], expected)
 
@@ -514,7 +511,7 @@ class PackagedDistributionTests(unittest.TestCase):
         "chmod does not model a read-only directory on Windows the way it does on POSIX",
     )
     def test_predicts_with_a_read_only_installed_package_directory(self) -> None:
-        """spec/PR-7.md: "Model loading must not write into site-packages."
+        """Ensure model loading does not write into site-packages.
 
         Installs into its own environment, separate from the class-shared one
         every other test in this module reads, so making it read-only cannot
