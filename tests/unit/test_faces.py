@@ -110,6 +110,16 @@ class FaceFrontendUsageTests(unittest.TestCase):
         self.assertEqual(extraction.gender_chip.dtype, np.uint8)
         self.assertEqual(extraction.age_chip.dtype, np.uint8)
 
+    def test_crop_chips_match_extract_with_the_whole_image_box(self) -> None:
+        rng = np.random.default_rng(0)
+        face = as_rgb_array(rng.integers(0, 256, size=(90, 70, 3), dtype=np.uint8))
+        (extraction,) = self.frontend.extract(face, [[0, 0, 69, 89]])
+        gender_chip, age_chip = self.frontend.crop_chips(face, (GENDER_CHIP_SIZE, AGE_CHIP_SIZE))
+        self.assertTrue(np.array_equal(gender_chip, extraction.gender_chip))
+        self.assertTrue(np.array_equal(age_chip, extraction.age_chip))
+        (only_age,) = self.frontend.crop_chips(face, (AGE_CHIP_SIZE,))
+        self.assertTrue(np.array_equal(only_age, extraction.age_chip))
+
     def test_unrepresentable_box_raises_value_error(self) -> None:
         image = as_rgb_array(np.zeros((64, 64, 3), dtype=np.uint8))
         huge = 10**30

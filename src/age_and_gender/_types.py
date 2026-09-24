@@ -6,6 +6,7 @@ from typing import Literal, TypedDict
 
 __all__ = [
     "AgePrediction",
+    "FaceAttributes",
     "FacePrediction",
     "GenderPrediction",
     "Rectangle",
@@ -33,12 +34,17 @@ class AgePrediction(TypedDict):
     confidence: int
 
 
-class FacePrediction(TypedDict):
+class FaceAttributes(TypedDict):
+    """Gender and age of one already-cropped face, without a rectangle."""
+
+    gender: GenderPrediction
+    age: AgePrediction
+
+
+class FacePrediction(FaceAttributes):
     """One face of a prediction result.
 
     Key order matches the original C++ extension: gender, age, then face.
     """
 
-    gender: GenderPrediction
-    age: AgePrediction
     face: Rectangle

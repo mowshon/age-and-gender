@@ -20,14 +20,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Self
 
 import numpy as np
+from numpy.typing import NDArray
 from PIL import Image
 
 from ._faces import FaceFrontend, load_predictor
-from ._images import as_rgb_array, parse_boxes
-from ._inference import InferenceEngine
+from ._images import as_face_array, as_rgb_array, parse_boxes
+from ._inference import InferenceEngine, NeuralNetwork
 from ._models import ModelBundle, bundled_models, load_bundle
-from ._postprocess import face_predictions
-from ._types import FacePrediction, Task
+from ._postprocess import age_predictions, face_predictions, gender_predictions
+from ._types import AgePrediction, FaceAttributes, FacePrediction, GenderPrediction, Task
 
 if TYPE_CHECKING:
     # Only imported for type checking: api.py itself never touches dlib
@@ -246,10 +247,111 @@ class AgeAndGender:
                 age_weights=age_weights,
             )
 
+    # ------------------------------------------------------------------
+    # Already-cropped faces
+    # ------------------------------------------------------------------
+
+    def predict_face(self, face: Image.Image | np.ndarray) -> FaceAttributes:
+        """Estimate age and gender for one face another detector already cropped.
+
+        Detection does not run: the whole image is taken as the face
+        rectangle, then landmarked and aligned exactly as :meth:`predict`
+        aligns a detected face, so the result equals ``predict(face, [(0,
+        width - 1, height - 1, 0)])[0]`` without its ``"face"`` key. Crop
+        roughly where a face detector's box would sit; the landmark model
+        tolerates a modest margin either way, but alignment, and with it the
+        estimate, degrades on crops that are mostly background or cut
+        features off.
+
+        Args:
+            face: One face as an RGB :class:`PIL.Image.Image` or an ``[H, W,
+                3]`` uint8 NumPy array, at least 2 x 2 pixels.
+
+        Returns:
+            ``{"gender": {"value": str, "confidence": int}, "age": {"value":
+            int, "confidence": int}}``.
+
+        Raises:
+            TypeError: `face` is neither a Pillow image nor a NumPy array.
+            ValueError: `face` is not an RGB uint8 image of at least 2 x 2
+                pixels.
+        """
+        image = as_face_array(face)
+        with self._lock:
+            gender_network = self._engine.gender
+            age_network = self._engine.age
+            gender_chip, age_chip = self._ensure_frontend().crop_chips(
+                image, (gender_network.spec.chip_size, age_network.spec.chip_size)
+            )
+            return {
+                "gender": _gender_of(gender_network, gender_chip),
+                "age": _age_of(age_network, age_chip),
+            }
+
+    def gender(self, face: Image.Image | np.ndarray) -> GenderPrediction:
+        """Estimate the gender of one face another detector already cropped.
+
+        Extracts only the gender chip and runs only the gender model, which
+        is loaded on first use; the age model is not loaded. The result equals
+        ``predict_face(face)["gender"]``.
+
+        Args:
+            face: One face, as accepted by :meth:`predict_face`.
+
+        Returns:
+            ``{"value": str, "confidence": int}``.
+
+        Raises:
+            TypeError: `face` is neither a Pillow image nor a NumPy array.
+            ValueError: `face` is not an RGB uint8 image of at least 2 x 2
+                pixels.
+        """
+        image = as_face_array(face)
+        with self._lock:
+            network = self._engine.gender
+            (chip,) = self._ensure_frontend().crop_chips(image, (network.spec.chip_size,))
+            return _gender_of(network, chip)
+
+    def age(self, face: Image.Image | np.ndarray) -> AgePrediction:
+        """Estimate the age of one face another detector already cropped.
+
+        Extracts only the age chip and runs only the age model, which is
+        loaded on first use; the gender model is not loaded. The result equals
+        ``predict_face(face)["age"]``.
+
+        Args:
+            face: One face, as accepted by :meth:`predict_face`.
+
+        Returns:
+            ``{"value": int, "confidence": int}``.
+
+        Raises:
+            TypeError: `face` is neither a Pillow image nor a NumPy array.
+            ValueError: `face` is not an RGB uint8 image of at least 2 x 2
+                pixels.
+        """
+        image = as_face_array(face)
+        with self._lock:
+            network = self._engine.age
+            (chip,) = self._ensure_frontend().crop_chips(image, (network.spec.chip_size,))
+            return _age_of(network, chip)
+
     def _ensure_frontend(self) -> FaceFrontend:
         if self._frontend is None:
             self._frontend = FaceFrontend(self._bundle, predictor=self._predictor_override)
         return self._frontend
+
+
+def _gender_of(network: NeuralNetwork, chip: NDArray[np.uint8]) -> GenderPrediction:
+    labels = network.spec.labels
+    assert labels is not None  # a gender spec always carries labels
+    return gender_predictions(network.probabilities([chip]), labels)[0]
+
+
+def _age_of(network: NeuralNetwork, chip: NDArray[np.uint8]) -> AgePrediction:
+    age_weights = network.spec.age_weights
+    assert age_weights is not None  # an age spec always carries class weights
+    return age_predictions(network.probabilities([chip]), age_weights)[0]
 
 
 def _explicit_onnx_bundle(file_path: Path, task: Task) -> ModelBundle:

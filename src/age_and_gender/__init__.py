@@ -15,12 +15,13 @@ bundled models are read the first time a network is actually used.
 
 from __future__ import annotations
 
-from ._types import AgePrediction, FacePrediction, GenderPrediction, Rectangle
+from ._types import AgePrediction, FaceAttributes, FacePrediction, GenderPrediction, Rectangle
 from .api import AgeAndGender
 
 __all__ = [
     "AgeAndGender",
     "AgePrediction",
+    "FaceAttributes",
     "FacePrediction",
     "GenderPrediction",
     "Rectangle",

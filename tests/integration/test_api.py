@@ -142,6 +142,87 @@ class PredictionBehaviorTests(unittest.TestCase):
         self.assertEqual(results, [face.result for face in explicit.faces])
 
 
+# Example crops and the gender the bundled model assigns each one.
+FACE_CROPS = (("face-1.png", "female"), ("face-2.png", "male"))
+
+
+def _load_face_crop(name: str) -> np.ndarray:
+    with Image.open(ROOT / "example" / name) as image:
+        return as_rgb_array(image.convert("RGB"))
+
+
+class PreCroppedFaceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.predictor = AgeAndGender()
+
+    def test_predict_face_equals_predict_with_the_whole_crop_as_the_box(self) -> None:
+        for name, _ in FACE_CROPS:
+            with self.subTest(face=name):
+                face = _load_face_crop(name)
+                height, width = face.shape[:2]
+                (expected,) = self.predictor.predict(face, [(0, width - 1, height - 1, 0)])
+                del expected["face"]
+                self.assertEqual(self.predictor.predict_face(face), expected)
+
+    def test_example_crops_are_classified(self) -> None:
+        for name, gender in FACE_CROPS:
+            with self.subTest(face=name):
+                result = self.predictor.predict_face(_load_face_crop(name))
+                self.assertEqual(list(result), ["gender", "age"])
+                self.assertEqual(result["gender"]["value"], gender)
+                self.assertIsInstance(result["age"]["value"], int)
+
+    def test_age_and_gender_equal_the_halves_of_predict_face(self) -> None:
+        for name, _ in FACE_CROPS:
+            with self.subTest(face=name):
+                face = _load_face_crop(name)
+                both = self.predictor.predict_face(face)
+                self.assertEqual(self.predictor.gender(face), both["gender"])
+                self.assertEqual(self.predictor.age(face), both["age"])
+
+    def test_pillow_face_gives_the_same_result_as_its_array(self) -> None:
+        face = _load_face_crop("face-1.png")
+        self.assertEqual(
+            self.predictor.predict_face(Image.fromarray(face)), self.predictor.predict_face(face)
+        )
+
+    def test_face_methods_never_run_the_detector(self) -> None:
+        predictor = AgeAndGender()
+        predictor.predict_face(_load_face_crop("face-1.png"))  # build the frontend first
+        spy = mock.Mock(side_effect=AssertionError("the detector must not run on a face crop"))
+        predictor._frontend._detector = spy
+        face = _load_face_crop("face-2.png")
+        predictor.predict_face(face)
+        predictor.gender(face)
+        predictor.age(face)
+        self.assertEqual(spy.call_count, 0)
+
+    def test_gender_alone_loads_only_the_gender_model(self) -> None:
+        predictor = AgeAndGender()
+        predictor.gender(_load_face_crop("face-1.png"))
+        self.assertTrue(predictor._engine.gender.is_loaded)
+        self.assertFalse(predictor._engine.age.is_loaded)
+
+    def test_age_alone_loads_only_the_age_model(self) -> None:
+        predictor = AgeAndGender()
+        predictor.age(_load_face_crop("face-1.png"))
+        self.assertTrue(predictor._engine.age.is_loaded)
+        self.assertFalse(predictor._engine.gender.is_loaded)
+
+    def test_invalid_faces_are_rejected_by_every_face_method(self) -> None:
+        rgba = Image.new("RGBA", (8, 8))
+        one_pixel_wide = np.zeros((8, 1, 3), dtype=np.uint8)
+        for method in (self.predictor.predict_face, self.predictor.gender, self.predictor.age):
+            with self.subTest(method=method.__name__):
+                with self.assertRaises(ValueError):
+                    method(rgba)
+                with self.assertRaises(ValueError):
+                    method(one_pixel_wide)
+                with self.assertRaises(TypeError):
+                    method("face.png")
+
+
 class ConcurrencyTests(unittest.TestCase):
     def test_concurrent_predictions_on_one_instance_are_all_correct(self) -> None:
         predictor = AgeAndGender()

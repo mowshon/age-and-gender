@@ -11,3 +11,4 @@ src/age_and_gender/models/notices/*.md text eol=lf
 *.rgb binary
 *.f32 binary
 *.jpg binary
+*.png binary

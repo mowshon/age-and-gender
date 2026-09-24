@@ -66,6 +66,9 @@ only-include = [
     # landmark, and alignment path.
     "example/test-image.jpg",
     "example/test-image-2.jpg",
+    # Pre-cropped face tests in tests/integration/test_api.py read these.
+    "example/face-1.png",
+    "example/face-2.png",
     "pyproject.toml",
     "LICENSE",
     "README.md",

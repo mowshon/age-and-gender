@@ -16,9 +16,12 @@ from PIL import Image
 
 from ._types import Rectangle
 
-__all__ = ["as_rgb_array", "parse_boxes"]
+__all__ = ["as_face_array", "as_rgb_array", "parse_boxes"]
 
 _RECTANGLE_LENGTH = 4
+# A pre-cropped face is its own rectangle, so it must satisfy the same strict
+# left < right and top < bottom rule as an explicit box.
+_MIN_FACE_SIDE = 2
 # dlib's rectangle stores each coordinate in a C++ long. This module does not
 # import dlib, so it cannot query the backend's actual limit, and that limit is
 # platform-dependent: a C long is 64-bit on Linux/macOS but only 32-bit on
@@ -70,6 +73,30 @@ def as_rgb_array(photo: Image.Image | np.ndarray) -> NDArray[np.uint8]:
         raise TypeError(f"photo must be a PIL.Image.Image or a NumPy array, got {type(photo)!r}")
     if array.shape[0] == 0 or array.shape[1] == 0:
         raise ValueError(f"image must be nonempty, got shape {array.shape}")
+    return array
+
+
+def as_face_array(face: Image.Image | np.ndarray) -> NDArray[np.uint8]:
+    """Validate an already-cropped face and return it as an RGB array.
+
+    Args:
+        face: One face, as accepted by :func:`as_rgb_array`.
+
+    Returns:
+        The array :func:`as_rgb_array` returns.
+
+    Raises:
+        TypeError: `face` is neither a Pillow image nor a NumPy array.
+        ValueError: `face` fails :func:`as_rgb_array` validation, or is
+            narrower or shorter than two pixels, which as a rectangle would
+            have degenerate geometry.
+    """
+    array = as_rgb_array(face)
+    if array.shape[0] < _MIN_FACE_SIDE or array.shape[1] < _MIN_FACE_SIDE:
+        raise ValueError(
+            f"face must be at least {_MIN_FACE_SIDE} x {_MIN_FACE_SIDE} pixels, "
+            f"got shape {array.shape}"
+        )
     return array
 
 

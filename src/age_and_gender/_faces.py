@@ -167,6 +167,27 @@ class FaceFrontend:
             )
         return extractions
 
+    def crop_chips(self, face: NDArray[np.uint8], sizes: Sequence[int]) -> list[NDArray[np.uint8]]:
+        """Align an already-cropped face and extract one chip per requested size.
+
+        The whole array is the face rectangle, so detection does not run; the
+        chips equal those :meth:`extract` produces for the single box ``[0, 0,
+        width - 1, height - 1]``. Only the requested sizes are extracted, so a
+        caller that runs one network does not pay for the other chip.
+
+        Args:
+            face: A C-contiguous ``[H, W, 3]`` uint8 RGB array holding one
+                face, as returned by :func:`age_and_gender._images.as_face_array`.
+            sizes: Chip sizes to extract, for example ``(GENDER_CHIP_SIZE,)``.
+
+        Returns:
+            One aligned ``[size, size, 3]`` uint8 chip per entry of `sizes`, in
+            the same order.
+        """
+        height, width = face.shape[:2]
+        shape = self._predictor(face, dlib.rectangle(0, 0, width - 1, height - 1))
+        return [self._chip(face, shape, size) for size in sizes]
+
     def _resolve(
         self, image: NDArray[np.uint8], boxes: Sequence[Rectangle] | None
     ) -> list[tuple[Rectangle, dlib.rectangle]]:

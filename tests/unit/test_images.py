@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 from PIL import Image
 
-from age_and_gender._images import as_rgb_array
+from age_and_gender._images import as_face_array, as_rgb_array
 
 
 def rgb_image(width: int = 6, height: int = 4) -> Image.Image:
@@ -108,6 +108,21 @@ class UnsupportedInputTests(unittest.TestCase):
     def test_a_string_is_rejected(self) -> None:
         with self.assertRaises(TypeError):
             as_rgb_array("photo.jpg")
+
+
+class FaceInputTests(unittest.TestCase):
+    def test_two_by_two_face_is_the_smallest_accepted(self) -> None:
+        array = rgb_array(width=2, height=2)
+        self.assertIs(as_face_array(array), array)
+
+    def test_one_pixel_wide_or_tall_face_is_rejected_as_degenerate(self) -> None:
+        for width, height in ((1, 5), (5, 1)):
+            with self.subTest(width=width, height=height), self.assertRaises(ValueError):
+                as_face_array(rgb_array(width=width, height=height))
+
+    def test_rgb_validation_still_applies(self) -> None:
+        with self.assertRaises(ValueError):
+            as_face_array(rgb_image().convert("RGBA"))
 
 
 if __name__ == "__main__":
