@@ -1,0 +1,107 @@
+[build-system]
+requires = ["hatchling>=1.32"]
+build-backend = "hatchling.build"
+
+[project]
+name = "age-and-gender"
+description = "Age and gender estimation from face images, with no compiler required."
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Mowshon" }]
+keywords = ["age", "gender", "face", "dlib", "onnx"]
+dynamic = ["version"]
+readme = "README.md"
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Typing :: Typed",
+]
+
+# dlib-bin is pinned exactly because detector boxes, landmarks, and both chip
+# sizes are bit-exact with this wheel in tests/parity/test_frontend.py. Re-run
+# parity before widening it. onnx, Torch, Caffe and face_recognition stay out
+# of the runtime entirely.
+dependencies = [
+    "numpy>=2.3.3,<3",
+    "onnxruntime>=1.23.0,<1.31",
+    "Pillow>=12.3.0,<13",
+    "dlib-bin==20.0.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/mowshon/age-and-gender"
+Source = "https://github.com/mowshon/age-and-gender"
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.2",
+    # tests/integration/test_package_resources.py builds with --no-isolation
+    # (offline, from this environment) rather than an isolated build venv, so
+    # the build backend has to be installed here explicitly.
+    "hatchling>=1.32",
+    "pytest>=8.4",
+    "ruff>=0.16",
+]
+
+[tool.hatch.version]
+path = "src/age_and_gender/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/age_and_gender"]
+
+[tool.hatch.build.targets.sdist]
+only-include = [
+    "src/age_and_gender",
+    "tests",
+    # Frontend parity tests decode these images to exercise the real detector,
+    # landmark, and alignment path.
+    "example/test-image.jpg",
+    "example/test-image-2.jpg",
+    # Pre-cropped face tests in tests/integration/test_api.py read these.
+    "example/face-1.png",
+    "example/face-2.png",
+    "pyproject.toml",
+    "LICENSE",
+    "README.md",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "src"]
+norecursedirs = ["build", "venv", "*.egg-info"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+extend-exclude = [
+    "build",
+    "venv",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF", "D"]
+ignore = [
+    "D203",  # incompatible with D211
+    "D213",  # incompatible with D212
+    # The stage comparison helpers deliberately walk pairs whose lengths they
+    # have already validated and report mismatches themselves, so a strict zip
+    # would replace a described failure with a bare exception.
+    "B905",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Docstring rules are a public-surface requirement, not a test-suite one.
+"tests/**" = ["D"]
+".github/scripts/**" = ["D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"

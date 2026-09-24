@@ -1,32 +1,78 @@
-from age_and_gender import *
+"""Predict age and gender, print the results as JSON, and save an annotated image.
+
+    python example/example.py
+    python example/example.py photo.jpg --output annotated.jpg
+    python example/example.py photo.jpg --models-dir path/to/bundle > result.json
+
+JSON goes to stdout; status messages go to stderr.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
 from PIL import Image, ImageDraw, ImageFont
 
-data = AgeAndGender()
-data.load_shape_predictor('models/shape_predictor_5_face_landmarks.dat')
-data.load_dnn_gender_classifier('models/dnn_gender_classifier_v1.dat')
-data.load_dnn_age_predictor('models/dnn_age_predictor_v1.dat')
+from age_and_gender import AgeAndGender
 
-filename = 'test-image.jpg'
+HERE = Path(__file__).resolve().parent
 
-img = Image.open(filename).convert("RGB")
-result = data.predict(img)
+# Pillow looks bare font file names up in the system font directories.
+SYSTEM_FONTS = ("DejaVuSans.ttf", "Arial.ttf", "Helvetica.ttc")
 
-font = ImageFont.truetype("Acme-Regular.ttf", 20)
 
-for info in result:
-    shape = [(info['face'][0], info['face'][1]), (info['face'][2], info['face'][3])]
-    draw = ImageDraw.Draw(img)
+def load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """Return the first installed system font, or Pillow's built-in one."""
+    for name in SYSTEM_FONTS:
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
+    return ImageFont.load_default(size)
 
-    gender = info['gender']['value'].title()
-    gender_percent = int(info['gender']['confidence'])
-    age = info['age']['value']
-    age_percent = int(info['age']['confidence'])
 
-    draw.text(
-        (info['face'][0] - 10, info['face'][3] + 10), f"{gender} (~{gender_percent}%)\n{age} y.o. (~{age_percent}%).",
-        fill='white', font=font, align='center'
+def main() -> None:
+    """Run the example."""
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
+    parser.add_argument("image", nargs="?", type=Path, default=HERE / "test-image.jpg")
+    parser.add_argument("--output", type=Path, default=HERE / "result.jpg")
+    parser.add_argument(
+        "--models-dir",
+        type=Path,
+        help="model bundle directory with manifest.json (default: the bundled models)",
+    )
+    args = parser.parse_args()
 
-    draw.rectangle(shape, outline="red", width=5)
+    # Without --models-dir, the models installed with the package are used.
+    predictor = AgeAndGender.from_model_dir(args.models_dir) if args.models_dir else AgeAndGender()
 
-img.show()
+    with Image.open(args.image) as source:
+        image = source.convert("RGB")
+    results = predictor.predict(image)
+
+    draw = ImageDraw.Draw(image)
+    font = load_font(max(16, image.width // 50))
+    for face in results:
+        left, top, right, bottom = face["face"]
+        gender, age = face["gender"], face["age"]
+        label = (
+            f"{gender['value'].title()} ({gender['confidence']}%)\n"
+            f"{age['value']} y.o. ({age['confidence']}%)"
+        )
+        draw.rectangle((left, top, right, bottom), outline="red", width=3)
+        draw.text(
+            (left, bottom + 6), label, font=font, fill="white", stroke_width=2, stroke_fill="black"
+        )
+    image.save(args.output)
+
+    print(json.dumps(results, indent=2))
+    print(f"{len(results)} face(s) found; annotated image saved to {args.output}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()

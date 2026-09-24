@@ -1,0 +1,14 @@
+# The bundled notices are verified byte-for-byte against the SHA-256 digests
+# in src/age_and_gender/models/manifest.json, in the source tree and in built
+# wheels and sdists. Pin them to LF so checkouts with core.autocrlf=true (the
+# default on Windows runners) do not rewrite them and break those digests.
+src/age_and_gender/models/notices/*.md text eol=lf
+
+# Model artifacts, content-addressed parity fixtures, and test images are also
+# checked by digest; never let a heuristic treat them as text.
+*.onnx binary
+*.dat binary
+*.rgb binary
+*.f32 binary
+*.jpg binary
+*.png binary

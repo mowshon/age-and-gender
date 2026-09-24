@@ -1,0 +1,193 @@
+name: CI
+
+on:
+  push:
+    branches: [master, refactoring]
+  pull_request:
+    branches: [master, refactoring]
+  workflow_dispatch: {}
+  # Lets release.yml gate publishing on lint, every OS/Python cell, the build,
+  # every install-smoke cell, and the glibc floor instead of a narrower
+  # single-platform check of its own.
+  workflow_call: {}
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Uploaded once by `build`, reused by every downstream job so the exact
+  # same pure-Python wheel is what every platform/Python combination proves
+  # installs and runs, and what release.yml publishes when this workflow is
+  # called.
+  DIST_ARTIFACT: age-and-gender-dist
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m ruff check .
+
+  test:
+    name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-14]
+        python-version: ["3.12", "3.13", "3.14"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e ".[dev]"
+      - run: python -m pip check
+      # Exercises unit, integration, and parity tests against the frozen
+      # compatibility fixtures. Model-signature and structural manifest checks
+      # live in tests/unit/test_models.py.
+      - run: python -m pytest -q
+
+  build:
+    name: Build wheel and sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: python -m pip install --upgrade pip build twine
+      # Builds the sdist, then builds a second wheel from that sdist in
+      # isolation.
+      - run: python -m build --outdir dist
+      - name: Inspect archive contents and size
+        run: |
+          set -eu
+          ls -la dist
+          wheel=$(ls dist/*.whl)
+          size=$(stat -c%s "$wheel")
+          budget=$((100 * 1024 * 1024))
+          echo "wheel size: $size bytes (budget: $budget bytes)"
+          if [ "$size" -gt "$budget" ]; then
+            echo "::error::wheel exceeds the 100 MiB size budget"
+            exit 1
+          fi
+          python -m zipfile -l "$wheel"
+      # Keep archive validation active while the intentionally empty README
+      # leaves long-description metadata for the publication stage.
+      - run: twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.DIST_ARTIFACT }}
+          path: dist/
+          retention-days: 14
+
+  install-smoke:
+    name: Install smoke (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-14]
+        python-version: ["3.12", "3.13", "3.14"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.DIST_ARTIFACT }}
+          path: dist
+      - run: python -m pip install --upgrade pip
+      # --only-binary=:all: fails loudly if any dependency would need a
+      # source build, instead of silently compiling one.
+      - name: Install from the built wheel, binary-only
+        shell: bash
+        run: |
+          set -eu
+          wheel=$(ls dist/*.whl)
+          python -m pip install --only-binary=:all: "$wheel"
+      - run: python -m pip check
+      - name: Offline smoke test
+        run: python .github/scripts/smoke_install.py
+      # Best-effort extra proof on Linux: an unprivileged network namespace
+      # blocks outbound access entirely, so this additionally shows
+      # prediction needs no network at all, not just that it happens not to
+      # use one. continue-on-error because some hardened runner images
+      # restrict unprivileged user namespaces outright (a runner-policy
+      # question, not a package regression); the unsandboxed run above is
+      # the gate that actually has to pass, on every platform.
+      - name: Offline smoke test, network namespace blocked (best effort)
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        run: unshare --net --map-root-user python .github/scripts/smoke_install.py
+
+  # Every other cell above installs on whatever glibc the ubuntu-latest/
+  # ubuntu-24.04-arm runner images happen to ship (materially newer than the
+  # supported floor), so none of them actually prove glibc 2.28 compatibility.
+  # These two do, by installing and running inside the exact
+  # manylinux_2_28 images ONNX Runtime and dlib-bin build their wheel
+  # platform tags against.
+  glibc-floor:
+    name: glibc 2.28 floor (manylinux_2_28, ${{ matrix.arch }})
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: x86_64
+            image: quay.io/pypa/manylinux_2_28_x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+            image: quay.io/pypa/manylinux_2_28_aarch64
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.DIST_ARTIFACT }}
+          path: dist
+      - name: Install from the built wheel and run the offline smoke test
+        run: |
+          set -eu
+          PY=/opt/python/cp313-cp313/bin/python
+          "$PY" -m pip install --upgrade pip
+          wheel=$(ls dist/*.whl)
+          "$PY" -m pip install --only-binary=:all: "$wheel"
+          "$PY" -m pip check
+          "$PY" .github/scripts/smoke_install.py
+
+  # Exercises the literal documented command, `pip install age-and-gender`,
+  # rather than only ever installing a local wheel path: --find-links adds
+  # dist/ as an extra source pip checks by name and version, without
+  # disabling the default index the runtime dependencies still resolve from.
+  ordinary-install-command:
+    name: Ordinary `pip install age-and-gender` command
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.DIST_ARTIFACT }}
+          path: dist
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install --find-links dist age-and-gender
+      - run: python -c "import age_and_gender; print(age_and_gender.__version__)"

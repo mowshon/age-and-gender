@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "status": "frozen",
+  "compatibility_thresholds": {
+    "detector_landmarks_chips_normalized_input": "exact",
+    "logits": {"atol": 1e-5, "rtol": 1e-4},
+    "probabilities": {"atol": 1e-6, "rtol": 1e-4},
+    "age_expectation_atol": 1e-4,
+    "public_results": "exact"
+  },
+  "inputs": [
+    {
+      "path": "example/test-image.jpg",
+      "source_sha256": "0a3eb36690b3ae319939e534b6c4cd00def8045af8c12d62829d6d36ec7746f4",
+      "decoded_rgb_sha256": "a4a49f6bdf3b93b56cafd4421d19314cb8e8f76f184496a07a220f6020d4f8b9",
+      "width": 1100,
+      "height": 825,
+      "expected_faces": 5,
+      "golden": "tests/fixtures/legacy/test-image.golden.json",
+      "expected": [
+        {
+          "rectangle": [419, 266, 506, 352],
+          "landmarks": [[486, 291], [471, 294], [432, 297], [447, 297], [460, 325]],
+          "age_expectation": 25.6383247,
+          "result": {"gender": {"value": "female", "confidence": 100}, "age": {"value": 26, "confidence": 84}, "face": [419, 266, 506, 352]}
+        },
+        {
+          "rectangle": [780, 112, 883, 215],
+          "landmarks": [[859, 135], [844, 136], [803, 141], [819, 139], [834, 171]],
+          "age_expectation": 58.0046043,
+          "result": {"gender": {"value": "male", "confidence": 99}, "age": {"value": 58, "confidence": 46}, "face": [780, 112, 883, 215]}
+        },
+        {
+          "rectangle": [595, 135, 699, 238],
+          "landmarks": [[675, 157], [660, 160], [620, 158], [636, 160], [651, 190]],
+          "age_expectation": 19.2904816,
+          "result": {"gender": {"value": "male", "confidence": 98}, "age": {"value": 19, "confidence": 72}, "face": [595, 135, 699, 238]}
+        },
+        {
+          "rectangle": [227, 198, 314, 285],
+          "landmarks": [[299, 224], [284, 226], [245, 230], [261, 229], [278, 257]],
+          "age_expectation": 61.9748001,
+          "result": {"gender": {"value": "female", "confidence": 99}, "age": {"value": 62, "confidence": 53}, "face": [227, 198, 314, 285]}
+        },
+        {
+          "rectangle": [352, 544, 438, 630],
+          "landmarks": [[425, 557], [409, 562], [369, 569], [386, 567], [402, 594]],
+          "age_expectation": 25.0887489,
+          "result": {"gender": {"value": "female", "confidence": 100}, "age": {"value": 25, "confidence": 89}, "face": [352, 544, 438, 630]}
+        }
+      ],
+      "source": "original repository example",
+      "redistribution": "covered by repository license"
+    },
+    {
+      "path": "example/test-image-2.jpg",
+      "source_sha256": "e060bdc12cd53020c104ad305324c69832ec4720c2709e525be5975aa7877db9",
+      "decoded_rgb_sha256": "94e936c478ed256ca699233d019af72f964019ffa4e6fbcabcf9b2504d4fc9ed",
+      "width": 634,
+      "height": 435,
+      "expected_faces": 2,
+      "golden": "tests/fixtures/legacy/test-image-2.golden.json",
+      "expected": [
+        {
+          "rectangle": [117, 29, 189, 101],
+          "landmarks": [[165, 59], [159, 59], [136, 57], [145, 58], [156, 79]],
+          "age_expectation": 59.807106,
+          "result": {"gender": {"value": "male", "confidence": 99}, "age": {"value": 60, "confidence": 22}, "face": [117, 29, 189, 101]}
+        },
+        {
+          "rectangle": [453, 69, 525, 141],
+          "landmarks": [[509, 96], [499, 97], [479, 98], [487, 98], [491, 114]],
+          "age_expectation": 50.7744064,
+          "result": {"gender": {"value": "female", "confidence": 99}, "age": {"value": 51, "confidence": 86}, "face": [453, 69, 525, 141]}
+        }
+      ],
+      "source": "original repository example",
+      "redistribution": "covered by repository license"
+    }
+  ],
+  "explicit_box_cases": [
+    {
+      "name": "reversed-order-duplicate-and-out-of-frame",
+      "input": "example/test-image-2.jpg",
+      "boxes_trbl": [[69, 525, 141, 453], [29, 189, 101, 117], [69, 525, 141, 453], [-20, 100, 100, -20]],
+      "golden": "tests/fixtures/legacy/explicit-boxes.golden.json",
+      "expected": [
+        {
+          "rectangle": [453, 69, 525, 141],
+          "landmarks": [[509, 96], [499, 97], [479, 98], [487, 98], [491, 114]],
+          "result": {"gender": {"value": "female", "confidence": 99}, "age": {"value": 51, "confidence": 86}, "face": [453, 69, 525, 141]}
+        },
+        {
+          "rectangle": [117, 29, 189, 101],
+          "landmarks": [[165, 59], [159, 59], [136, 57], [145, 58], [156, 79]],
+          "result": {"gender": {"value": "male", "confidence": 99}, "age": {"value": 60, "confidence": 22}, "face": [117, 29, 189, 101]}
+        },
+        {
+          "rectangle": [453, 69, 525, 141],
+          "landmarks": [[509, 96], [499, 97], [479, 98], [487, 98], [491, 114]],
+          "result": {"gender": {"value": "female", "confidence": 99}, "age": {"value": 51, "confidence": 86}, "face": [453, 69, 525, 141]}
+        },
+        {
+          "rectangle": [-20, -20, 100, 100],
+          "landmarks": [[67, 11], [55, 12], [22, 14], [36, 13], [50, 33]],
+          "result": {"gender": {"value": "male", "confidence": 94}, "age": {"value": 40, "confidence": 92}, "face": [-20, -20, 100, 100]}
+        }
+      ]
+    }
+  ],
+  "required_cases": {
+    "auto_detection": "implemented by oracle and canonical inputs",
+    "explicit_boxes": "implemented by repeatable --box arguments",
+    "reversed_and_duplicate_boxes": "covered by reversed-order-duplicate-and-out-of-frame",
+    "empty_box_list": "same path as omitted boxes; covered by executable contract tests",
+    "no_face": "synthetic uniform images in the tests",
+    "in_and_out_of_frame": "covered by reversed-order-duplicate-and-out-of-frame",
+    "representative_30_image_100_face_corpus": "not collected"
+  }
+}

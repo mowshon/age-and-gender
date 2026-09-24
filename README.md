@@ -1,148 +1,129 @@
-# Predict Age and Gender using Python
-This module will help you **determine the gender and age** of people from the image. The predict method **returns a list** of faces of people who were found in the image with a possible age and gender of the person.
+<p align="center">
+  <img src="https://raw.githubusercontent.com/mowshon/age-and-gender/master/example/logo.png" alt="age-and-gender" width="500">
+</p>
 
-**Available for Python** 2.7, 3.4, 3.5, 3.6, 3.7, 3.8
+<p align="center">
+  Age and gender estimation from face images.<br>
+  Pure Python install. No compiler, no model downloads.
+</p>
 
-![img](https://raw.githubusercontent.com/mowshon/age-and-gender/master/example/result.jpg)
+---
 
-© [Bill Gates family](https://www.businessinsider.com/microsoft-bill-melinda-gates-drive-daughter-to-school-2019-4)
+## Credits
 
-# Instalation
+This package uses pretrained models from
+**[dlib-models](https://github.com/davisking/dlib-models)** by
+**[Davis E. King](https://github.com/davisking)**. The age predictor and gender
+classifier were contributed to dlib-models by Cydral Technology.
+We are grateful to them for making these models freely available.
+
+## Installation
 
 ```bash
-git clone git@github.com:mowshon/age-and-gender.git
-cd age-and-gender
-python3 setup.py install --user
+pip install age-and-gender
 ```
 
-## Download the pre-trained models
+Requires Python 3.12+. Pretrained models are bundled with the package.
 
-We use already trained models. Thanks for the provided models from: https://github.com/davisking/dlib-models
-
-**Author**: [Davis E. King](https://github.com/davisking)
-
-1. **shape_predictor_5_face_landmarks.dat.bz2** [Download](https://github.com/davisking/dlib-models/raw/master/shape_predictor_5_face_landmarks.dat.bz2)
-
-_This is a 5 point landmarking model which identifies the corners of the eyes and bottom of the nose. It is trained on the dlib 5-point face landmark dataset, which consists of 7198 faces. [@davisking](https://github.com/davisking) created this dataset by downloading images from the internet and annotating them with dlib's imglab tool._
-    
-2. **dnn_age_predictor_v1.dat.bz2** [Download](https://github.com/davisking/dlib-models/raw/master/age-predictor/dnn_age_predictor_v1.dat.bz2)
-    
-_The initial source for the model's creation came from the document of Z. Qawaqneh et al.: "Deep Convolutional Neural Network for Age Estimation based on VGG-Face Model". However, our research has led us to significant improvements in the CNN model, allowing us to estimate the age of a person outperforming the state-of-the-art results in terms of the exact accuracy and for 1-off accuracy._
-
-_This model is thus an age predictor leveraging a ResNet-10 architecture and trained using a private dataset of about 110k different labelled images. During the training, we used an optimization and data augmentation pipeline and considered several sizes for the entry image._
-
-_This age predictor model is provided for free by Cydral Technology and is licensed under the Creative Commons Zero v1.0 Universal._
-    
-3. **dnn_gender_classifier_v1.dat.bz2** [Download](https://github.com/davisking/dlib-models/raw/master/gender-classifier/dnn_gender_classifier_v1.dat.bz2)
-
-_This model is a gender classifier trained using a private dataset of about 200k different face images and was generated according to the network definition and settings given in [Minimalistic CNN-based ensemble model for gender prediction from face images](http://www.eurecom.fr/fr/publication/4768/download/mm-publi-4768.pdf). Even if the dataset used for the training is different from that used by G. Antipov et al, the classification results on the LFW evaluation are similar overall (± 97.3%). To take up the authors' proposal to join the results of three networks, a simplification was made by finally presenting RGB images, thus simulating three "grayscale" networks via the three image planes. Better results could be probably obtained with a more complex and deeper network, but the performance of the classification is nevertheless surprising compared to the simplicity of the network used and thus its very small size._
-
-_This gender model is provided for free by Cydral Technology and is licensed under the Creative Commons Zero v1.0 Universal._
-    
-4. Unpack the `*.bz2` archives, you need only the `.dat` file.
-
-## Folder structure
-
-```
-test_example
--- shape_predictor_5_face_landmarks.dat
--- dnn_age_predictor_v1.dat
--- dnn_gender_classifier_v1.dat
--- test-image.jpg
--- example.py
-```
-
-# Example
+## Quick start
 
 ```python
+from PIL import Image
 from age_and_gender import AgeAndGender
-from PIL import Image
 
-data.load_shape_predictor('shape_predictor_5_face_landmarks.dat')
-data.load_dnn_gender_classifier('dnn_gender_classifier_v1.dat')
-data.load_dnn_age_predictor('dnn_age_predictor_v1.dat')
+predictor = AgeAndGender()
+image = Image.open("photo.jpg").convert("RGB")
 
-image = Image.open('test-image.jpg').convert("RGB")
-result = data.predict(image)
-
-print(result)
+print(predictor.predict(image))
 ```
-
-Result:
-
-```
-[{'age': {'confidence': 85, 'value': 26},
-  'face': [414, 265, 504, 355],
-  'gender': {'confidence': 100, 'value': 'female'}},
- {'age': {'confidence': 58, 'value': 62},
-  'face': [223, 199, 330, 307],
-  'gender': {'confidence': 99, 'value': 'female'}},
- {'age': {'confidence': 73, 'value': 19},
-  'face': [593, 128, 700, 235],
-  'gender': {'confidence': 99, 'value': 'male'}},
- {'age': {'confidence': 50, 'value': 24},
-  'face': [342, 534, 450, 641],
-  'gender': {'confidence': 100, 'value': 'female'}},
- {'age': {'confidence': 92, 'value': 61},
-  'face': [782, 116, 872, 206],
-  'gender': {'confidence': 99, 'value': 'male'}}]
-```
-
-### Examples of determining the gender and age of people from the image
-Code: https://github.com/mowshon/age-and-gender/tree/master/example
-
-# How to increase efficiency with [face_recognition](https://github.com/ageitgey/face_recognition) ?
-
-The module will try to determine where the faces of people are on the image. But, it is better for us to provide a variable with people's faces using the library [face_recognition](https://github.com/ageitgey/face_recognition) and method `face_locations()`.
-
-```
-python -m pip install numpy --user
-python -m pip install face_recognition --user
-```
-
-Code:
 
 ```python
-from age_and_gender import *
-from PIL import Image
-import face_recognition
-import numpy
-
-
-data = AgeAndGender()
-data.load_shape_predictor('models/shape_predictor_5_face_landmarks.dat')
-data.load_dnn_gender_classifier('models/dnn_gender_classifier_v1.dat')
-data.load_dnn_age_predictor('models/dnn_age_predictor_v1.dat')
-
-filename = 'test-image-2.jpg'
-
-img = Image.open(filename).convert("RGB")
-face_bounding_boxes = face_recognition.face_locations(
-    numpy.asarray(img),  # Convert to numpy array
-    model='hog'  # 'hog' for CPU | 'cnn' for GPU (NVIDIA with CUDA)
-)
-
-result = data.predict(img, face_bounding_boxes)
+[{'gender': {'value': 'female', 'confidence': 100},
+  'age': {'value': 26, 'confidence': 84},
+  'face': [419, 266, 506, 352]},
+ ...]
 ```
 
-## Module `age-and-gender` without `face_recognition`
+![result](https://raw.githubusercontent.com/mowshon/age-and-gender/master/example/result.jpg)
 
-![img](https://raw.githubusercontent.com/mowshon/age-and-gender/master/example/result-2-default.jpg)
+<sub>© [Bill Gates family](https://www.businessinsider.com/microsoft-bill-melinda-gates-drive-daughter-to-school-2019-4)</sub>
 
-## Module `age-and-gender` with `face_recognition` and `face_bounding_boxes`
+## Using any face detector
 
-![img](https://raw.githubusercontent.com/mowshon/age-and-gender/master/example/result-2.jpg)
+The built-in detector is optional. Crop faces with any detector (OpenCV, MediaPipe,
+RetinaFace, face_recognition, etc.) and pass each crop to `predict_face()`:
 
-**Full example of code**: https://github.com/mowshon/age-and-gender/blob/master/example/example-with-face-recognition.py
+```python
+from PIL import Image
+from age_and_gender import AgeAndGender
 
+predictor = AgeAndGender()
+image = Image.open("photo.jpg").convert("RGB")
 
+for left, top, right, bottom in detect_faces(image):  # your detector
+    face = image.crop((left, top, right, bottom))  # cropped face only
+    print(predictor.predict_face(face))
+```
 
-# Changelog
+```python
+{'gender': {'value': 'female', 'confidence': 100}, 'age': {'value': 25, 'confidence': 80}}
+```
 
-**Version 1.0.1**
-- The method `predict(pillow_img)` now require a PIL.Image object. Thanks to [@arrufat](https://github.com/arrufat) for the [piece of code](https://github.com/arrufat/wallyfinder/blob/2a3ddc1af2b676ad434574fecd9be0004c0fcc23/src/wallyfinder.cpp#L8-L42) that successfully performs the matrix conversion.
-- The method `predict(pillow_img, face_bounding_boxes)` takes another argument `face_bounding_boxes` with a list of faces in the image. Check out this example. 
-- If the method `predict(pillow_img)` does not get the second argument `face_bounding_boxes` with a list of faces, then the module will try to find the faces in the image itself.
+If you only need one attribute, `gender()` and `age()` each run a single model:
 
-**Version 1.0.0**
-- Initial commit and code
+```python
+predictor.gender(face)  # {'value': 'female', 'confidence': 100}
+predictor.age(face)     # {'value': 25, 'confidence': 80}
+```
+
+> `face` can also be an RGB NumPy array. Convert OpenCV (BGR) frames first with
+> `cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)`.
+
+## API
+
+| Method | Returns |
+| --- | --- |
+| `AgeAndGender()` | Predictor using the bundled models |
+| `predict(image, face_bounding_boxes=None)` | `list` of `{gender, age, face}`, one per detected face |
+| `predict_face(face)` | `{gender, age}` for one cropped face |
+| `gender(face)` | `{value, confidence}` |
+| `age(face)` | `{value, confidence}` |
+| `AgeAndGender.from_model_dir(path)` | Predictor using a custom model bundle (`manifest.json` + models) |
+
+- `image` / `face`: RGB `PIL.Image` or `[H, W, 3]` `uint8` NumPy array.
+- `face_bounding_boxes`: optional `(top, right, bottom, left)` boxes. When given, detection is skipped.
+- `face` in results: `[left, top, right, bottom]`.
+- `confidence`: integer percentage.
+
+## Models
+
+The pretrained models come from
+[davisking/dlib-models](https://github.com/davisking/dlib-models) and are bundled with
+the package, so nothing needs to be downloaded.
+
+| Model | Description | In this package |
+| --- | --- | --- |
+| HOG face detector | dlib's built-in frontal face detector. Used only by `predict()` when no boxes are given. | built into `dlib` |
+| `shape_predictor_5_face_landmarks.dat` | 5-point landmark model (eye corners and bottom of the nose) used to align each face. Trained on 7,198 annotated faces. | unchanged |
+| `dnn_age_predictor_v1.dat` | ResNet-10 age predictor trained on about 110k labelled face images. Estimates ages from 0 to 80. | `age-v1.onnx` |
+| `dnn_gender_classifier_v1.dat` | Compact CNN gender classifier trained on about 200k face images. Around 97.3% accuracy on LFW. | `gender-v1.onnx` |
+
+`dnn_age_predictor_v1.dat` and `dnn_gender_classifier_v1.dat` were converted to
+**ONNX** so they run on [ONNX Runtime](https://onnxruntime.ai/) and are easier to use from
+Python. The weights are unchanged, and the outputs match the original dlib networks.
+
+## What's new in 2.0
+
+- **No legacy C++ code.** The C++ extension and the vendored dlib sources from 1.x
+  have been removed. Nothing is compiled during installation.
+- **ONNX inference.** Age and gender run on ONNX Runtime. Face detection and landmarks
+  use the prebuilt `dlib-bin` wheel.
+- **Bundled models.** `AgeAndGender()` works immediately. The `load_*` calls are no
+  longer needed.
+- **Any face detector.** `predict_face()`, `gender()` and `age()` accept cropped faces.
+
+## License
+
+The package is released under the [MIT License](LICENSE). The bundled models are
+dedicated to the public domain under
+[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/).

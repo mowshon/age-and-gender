@@ -1,0 +1,240 @@
+{
+  "bundle_id": "age-and-gender-v1",
+  "bundle_kind": "package",
+  "dlib": {
+    "version": "19.20.0"
+  },
+  "graph_policy": {
+    "affine_folded": false,
+    "dynamic_positive_batch": true,
+    "external_data": false,
+    "reduced_precision": false,
+    "residual_padding": "trailing channels, rows, and columns; top-left origin preserved"
+  },
+  "license": {
+    "attribution": "Cydral Technology",
+    "notice": {
+      "path": "notices/Cydral-age-gender-models.md",
+      "sha256": "bc8ef03ce2fcb9349977a9f357a44f1194ef13b67fee1b7562ffa49e12d35bf2"
+    },
+    "source": "https://github.com/davisking/dlib-models",
+    "spdx": "CC0-1.0"
+  },
+  "models": {
+    "age": {
+      "age_weights": [
+        0.25,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80
+      ],
+      "artifact": {
+        "bytes": 10768819,
+        "filename": "age-v1.onnx",
+        "sha256": "4f9f0075200bd8ea6cd65ae6e6893cf820c513169382c08e82e533158358ed1c"
+      },
+      "input": {
+        "color_order": "RGB",
+        "dtype": "float32",
+        "name": "images",
+        "normalization": {
+          "means": [
+            122.781998,
+            117.000999,
+            104.297997
+          ],
+          "scale": 0.00390625
+        },
+        "shape": [
+          "N",
+          3,
+          64,
+          64
+        ]
+      },
+      "output": {
+        "dtype": "float32",
+        "name": "probabilities",
+        "shape": [
+          "N",
+          81
+        ],
+        "softmax_in_graph": true
+      },
+      "source": {
+        "bytes": 10790013,
+        "filename": "dnn_age_predictor_v1.dat",
+        "sha256": "4b78d4d7055e22620e362884b5551caa9379080277338aa2d4cdfc592f0e9fa3"
+      },
+      "task": "age"
+    },
+    "gender": {
+      "artifact": {
+        "bytes": 530620,
+        "filename": "gender-v1.onnx",
+        "sha256": "d4c4116cf720cde18de28a09071d8e1826bcff7935ef3470052163f3f6b5d734"
+      },
+      "input": {
+        "color_order": "RGB",
+        "dtype": "float32",
+        "name": "images",
+        "normalization": {
+          "means": [
+            122.781998,
+            117.000999,
+            104.297997
+          ],
+          "scale": 0.00390625
+        },
+        "shape": [
+          "N",
+          3,
+          32,
+          32
+        ]
+      },
+      "labels": [
+        "female",
+        "male"
+      ],
+      "output": {
+        "dtype": "float32",
+        "name": "probabilities",
+        "shape": [
+          "N",
+          2
+        ],
+        "softmax_in_graph": true
+      },
+      "source": {
+        "bytes": 530926,
+        "filename": "dnn_gender_classifier_v1.dat",
+        "sha256": "85453d6f6585c8e02ada95929956783c780dc04dcec5bdfd14af82f15c99ba41"
+      },
+      "task": "gender"
+    }
+  },
+  "onnx": {
+    "ir_version": 10,
+    "opset": 18,
+    "version": "1.19.0"
+  },
+  "preprocessing": {
+    "chips_extracted_individually": true,
+    "face_chip_padding": 0.2,
+    "normalization_formula": "(RGB_byte - channel_mean) / 256.0"
+  },
+  "runtime": {
+    "graph_optimization_level": "ORT_DISABLE_ALL",
+    "inter_op_num_threads": 1,
+    "intra_op_num_threads": 1,
+    "provider": "CPUExecutionProvider"
+  },
+  "schema_version": 1,
+  "shape_predictor": {
+    "artifact": {
+      "bytes": 9150489,
+      "filename": "shape_predictor_5_face_landmarks.dat",
+      "sha256": "c4b1e9804792707d3a405c2c16a80a20269e6675021f64a41d30fffafbc41888"
+    },
+    "format": "dlib-shape-predictor",
+    "license": {
+      "attribution": "Davis E. King",
+      "notice": {
+        "path": "notices/dlib-shape-predictor-5-face-landmarks.md",
+        "sha256": "146da7b06db701ee0ca0e7d2b71c93b8a5cec819e917b63dbda7e4626ecdcb53"
+      },
+      "source": "https://github.com/davisking/dlib-models",
+      "spdx": "CC0-1.0"
+    },
+    "parts": 5,
+    "source": {
+      "bytes": 9150489,
+      "filename": "shape_predictor_5_face_landmarks.dat",
+      "sha256": "c4b1e9804792707d3a405c2c16a80a20269e6675021f64a41d30fffafbc41888"
+    }
+  },
+  "tool_versions": {
+    "numpy": "2.3.3",
+    "onnx": "1.19.0",
+    "onnxruntime": "1.23.0",
+    "python": "3.13.15"
+  }
+}
